@@ -14,11 +14,19 @@ from client import local_train
 from server import aggregate
 from test import test
 
+from iot_device import IoTDevice
+from sklearn.cluster import KMeans
+from collections import Counter
+
+np.random.seed(1)
+
+
+
 def args_parser():
     parser = argparse.ArgumentParser()
     # federated learning arguments
     parser.add_argument('--epochs', type=int, default=300, help="rounds of training")
-    parser.add_argument('--n_clients', type=int, default=100, help="number of users: K")
+    parser.add_argument('--n_clients', type=int, default=30, help="number of users: K")
     parser.add_argument('--frac', type=float, default=0.1, help="the fraction of clients: C")
     parser.add_argument('--local_ep', type=int, default=5, help="the number of local epochs: E")
     parser.add_argument('--local_bs', type=int, default=100, help="local batch size: B")
@@ -32,6 +40,7 @@ def args_parser():
     parser.add_argument('--dataset', type=str, default='mnist', help="name of dataset")
     parser.add_argument('--iid', action='store_true', help='whether i.i.d or notc (default: non-iid)')
     parser.add_argument('--spc', action='store_true', help='whether spc or not (default: dirichlet)')
+    parser.add_argument('--uavfl', action='store_true', default=True, help='for UAVFL simulation')
     parser.add_argument('--beta', type=float, default=0.2, help="beta for Dirichlet distribution")
     parser.add_argument('--n_classes', type=int, default=10, help="number of classes")
     parser.add_argument('--n_channels', type=int, default=1, help="number of channels")
@@ -168,6 +177,29 @@ if __name__ == "__main__":
         s.K = 15
         client_settings.append(s)
 
+
+    # set iot devices
+    region1 = np.random.uniform(0, 10, (10, 2))
+    region2 = np.random.uniform(20, 30, (10, 2))
+    region3 = np.random.uniform(40, 50, (10, 2))
+    data = np.vstack((region1, region2, region3))
+
+    iot_devices = [IoTDevice(x, y, np.random.uniform(1, 30, 30)) for (x, y) in data]
+    comp_times = np.array([device.get_computation_time() for device in iot_devices])
+
+    ## K-means
+    n_clusters = 3
+    kmeans = KMeans(n_clusters=n_clusters, random_state=1)
+    kmeans.fit(comp_times)
+
+    labels = kmeans.labels_
+
+    clusters = {}
+    for i, label in enumerate(labels):
+        if label not in clusters:
+            clusters[label] = []
+        clusters[label].append(i)
+
     # create pool
     param_queues = []
     result_queues = []
@@ -190,8 +222,13 @@ if __name__ == "__main__":
     test_accs = []
     for round in range(args.epochs):
         # randomly select clients
-        random.shuffle(client_all)
-        clients = client_all[:n_clients]
+        clients = []
+
+        for cluster in clusters.values():
+            cur_client = int(np.random.choice(cluster, size=1)[0])
+            clients.append(cur_client)
+        
+        print(clients)
 
         # assign clients to processes
         assigned_clients = []

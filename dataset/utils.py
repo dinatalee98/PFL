@@ -1,7 +1,7 @@
 import numpy as np
 from torchvision import datasets, transforms
 from dataset.leaf import FEMNIST, ShakeSpeare
-
+from collections import Counter
 
 def get_dataset(args):
     # load dataset and split users
@@ -63,7 +63,9 @@ def get_dataset(args):
         else:
             exit('Error: unrecognized dataset')
         # sample users
-        if args.iid:
+        if args.uavfl:
+            dict_users = sampling_UAVFL(dataset_train, args.n_clients)
+        elif args.iid:
             dict_users = sampling_iid(dataset_train, args.n_clients)
         else:
             if args.spc:
@@ -72,6 +74,57 @@ def get_dataset(args):
                 dict_users = sampling_dirichlet(dataset_train, args.n_clients, beta=args.beta)
 
     return dataset_train, dataset_test, dict_users
+
+
+def sampling_UAVFL(dataset, num_users):
+    def split_by_label(targets, label_groups, group_ratio=0.9):
+        group_indices = []
+        other_indices = []
+        
+        for i, target in enumerate(targets):
+            if target in label_groups:
+                group_indices.append(i)
+            else:
+                other_indices.append(i)
+        
+        group_size = int(len(group_indices) * group_ratio)
+        other_size = int(len(other_indices) * (1 - group_ratio))
+        
+        group_sample = np.random.choice(group_indices, group_size, replace=False)
+        other_sample = np.random.choice(other_indices, other_size, replace=False)
+        
+        return np.concatenate([group_sample, other_sample])
+
+    num_users_per_region = int(num_users / 3)
+    label_split = [[0,1,2], [3,4,5], [6,7,8,9]]
+    group_indices = []
+
+    targets = np.array(dataset.targets)
+    for labels in label_split:
+        cur_indices = split_by_label(targets, labels)
+        group_indices.append(cur_indices)
+    
+
+    dict_users = {}
+
+    for n in range(3):
+        all_idxs = group_indices[n]
+        num_items = int(len(all_idxs) / (num_users_per_region))
+
+        for i in range(num_users_per_region):
+            cur_user = n * num_users_per_region + i
+            dict_users[cur_user] = set(np.random.choice(all_idxs, num_items, replace=False))
+            all_idxs = list(set(all_idxs) - dict_users[cur_user])
+
+    
+    ## label distribution
+    # for i in range(num_users):
+    #     subset_labels = [targets[j].item() for j in dict_users[i]]
+    #     label_distribution = Counter(subset_labels)
+
+    #     print(f"Subset {i} label distribution:", sorted(label_distribution.items()))
+
+    return dict_users
 
 
 def sampling_iid(dataset, num_users):
