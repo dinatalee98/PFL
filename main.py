@@ -27,7 +27,7 @@ def args_parser():
     # federated learning arguments
     parser.add_argument('--epochs', type=int, default=300, help="rounds of training")
     parser.add_argument('--n_clients', type=int, default=120, help="number of users: K")
-    parser.add_argument('--frac', type=float, default=0.1, help="the fraction of clients: C")
+    parser.add_argument('--frac', type=float, default=1.0, help="the fraction of clients: C")
     parser.add_argument('--local_ep', type=int, default=5, help="the number of local epochs: E")
     parser.add_argument('--local_bs', type=int, default=100, help="local batch size: B")
     parser.add_argument('--test_bs', type=int, default=128, help="test batch size")
@@ -56,7 +56,7 @@ def args_parser():
     parser.add_argument('--seed', type=int, default=0, help='random seed (default: 0)')
     parser.add_argument('--no_record', action='store_true', help='whether to record or not (default: record)')
     parser.add_argument('--load_checkpoint', action='store_true', help='whether to load model (default: do not load)')
-    parser.add_argument('--no_checkpoint', action='store_true', help='whether to save best model (default: checkpoint)')
+    parser.add_argument('--use_checkpoint', action='store_true', help='whether to save best model (default: no checkpoint)')
 
     # UAV-FL
     parser.add_argument('--uavfl', action='store_true', default=True, help='for UAVFL simulation')
@@ -320,7 +320,7 @@ if __name__ == "__main__":
             exit()
 
 
-        if not args.no_checkpoint:
+        if args.use_checkpoint:
             if test_acc == max(test_accs):
                 torch.save(w_glob, result_rootpath + '/{}_{}_L{}_C{}_{}_iid{}_spc{}.pt'.
                            format(args.dataset, args.model, args.local_ep, args.frac, args.fed_strategy, args.iid, args.spc))
