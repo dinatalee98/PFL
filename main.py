@@ -257,6 +257,7 @@ if __name__ == "__main__":
     c = zero_grad(global_model)
     lr = args.lr
     test_accs = []
+    early_stop_count = 5
     for round in range(args.epochs):
         # randomly select clients
         clients = []
@@ -309,6 +310,15 @@ if __name__ == "__main__":
         test_acc, test_loss = test(args, global_model, test_dataset, devices[-1])
         test_accs.append(test_acc)
         print("Testing accuracy: {:.2f}, Time: {:.4f}".format(test_acc, time.time() - start_time))
+
+        if test_acc > 96:
+            early_stop_count -= 1
+        else:
+            early_stop_count = 5
+        
+        if early_stop_count == 0:
+            exit()
+
 
         if not args.no_checkpoint:
             if test_acc == max(test_accs):
