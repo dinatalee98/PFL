@@ -15,8 +15,8 @@ from server import aggregate
 from test import test
 
 from iot_device import IoTDevice
-from sklearn.cluster import KMeans
-from collections import Counter
+from sklearn.cluster import DBSCAN, KMeans
+from collections import defaultdict, Counter
 
 np.random.seed(1)
 
@@ -40,11 +40,9 @@ def args_parser():
     parser.add_argument('--dataset', type=str, default='mnist', help="name of dataset")
     parser.add_argument('--iid', action='store_true', help='whether i.i.d or notc (default: non-iid)')
     parser.add_argument('--spc', action='store_true', help='whether spc or not (default: dirichlet)')
-    parser.add_argument('--uavfl', action='store_true', default=True, help='for UAVFL simulation')
     parser.add_argument('--beta', type=float, default=0.2, help="beta for Dirichlet distribution")
     parser.add_argument('--n_classes', type=int, default=10, help="number of classes")
     parser.add_argument('--n_channels', type=int, default=1, help="number of channels")
-    parser.add_argument('--group_ratio', type=float, default=0.95, help="labels ratio for region group")
 
     # optimizing arguments
     parser.add_argument('--optimizer', type=str, default='sgd', help="Optimizer (default: SGD)")
@@ -59,6 +57,11 @@ def args_parser():
     parser.add_argument('--no_record', action='store_true', help='whether to record or not (default: record)')
     parser.add_argument('--load_checkpoint', action='store_true', help='whether to load model (default: do not load)')
     parser.add_argument('--no_checkpoint', action='store_true', help='whether to save best model (default: checkpoint)')
+
+    # UAV-FL
+    parser.add_argument('--uavfl', action='store_true', default=True, help='for UAVFL simulation')
+    parser.add_argument('--group_ratio', type=float, default=0.95, help="labels ratio for region group")
+    parser.add_argument('--is_proposed', action='store_true', help='whether proposed or speed algorithm')
 
     args = parser.parse_args()
     return args
@@ -183,23 +186,56 @@ if __name__ == "__main__":
     region1 = np.random.uniform(0, 10, (int(args.n_clients/2), 2))
     region2 = np.random.uniform(20, 30, (int(args.n_clients/4), 2))
     region3 = np.random.uniform(40, 50, (int(args.n_clients/4), 2))
-    data = np.vstack((region1, region2, region3))
+    region_data = np.vstack((region1, region2, region3))
 
-    iot_devices = [IoTDevice(x, y, np.random.uniform(1, 30, 1)) for (x, y) in data]
+    iot_devices = [IoTDevice(x, y, np.random.uniform(1, 30, 1)) for (x, y) in region_data]
     comp_times = np.array([device.get_computation_time() for device in iot_devices])
 
-    ## K-means
-    n_clusters = 3
-    kmeans = KMeans(n_clusters=n_clusters, random_state=1)
-    kmeans.fit(comp_times)
+    if args.is_proposed:
+        dbscan = DBSCAN(eps=10, min_samples=10)
+        dbscan_labels = dbscan.fit_predict(region_data)
 
-    labels = kmeans.labels_
+        clustered_indices = defaultdict(list)
+        for idx, label in enumerate(dbscan_labels):
+            if label != -1:
+                clustered_indices[label].append(idx)
 
-    clusters = {}
-    for i, label in enumerate(labels):
-        if label not in clusters:
-            clusters[label] = []
-        clusters[label].append(i)
+        clusters = defaultdict(list)
+        for cluster_label, indices in clustered_indices.items():
+            comp_times_for_cluster = comp_times[indices].reshape(-1, 1)
+            
+            kmeans = KMeans(n_clusters=3, random_state=1)
+            kmeans_labels = kmeans.fit_predict(comp_times_for_cluster)
+
+            cluster_medians = []
+            for k_label in range(3):
+                cluster_times = comp_times_for_cluster[kmeans_labels == k_label]
+                median_val = np.median(cluster_times)
+                cluster_medians.append((k_label, median_val))
+
+            sorted_clusters = sorted(cluster_medians, key=lambda x: -x[1])
+            label_mapping = {old_label: new_label for new_label, (old_label, _) in enumerate(sorted_clusters)}
+
+            reordered_labels = np.array([label_mapping[label] for label in kmeans_labels])
+
+            for i, reordered_label in enumerate(reordered_labels):
+                clusters[(cluster_label, reordered_label)].append(indices[i])
+    else:
+        kmeans = KMeans(n_clusters=3, random_state=1)
+        kmeans.fit(comp_times)
+
+        labels = kmeans.labels_
+
+        clusters = {}
+        for i, label in enumerate(labels):
+            if label not in clusters:
+                clusters[label] = []
+            clusters[label].append(i)
+
+
+    for key, indices in sorted(clusters.items()):
+        print(f"Cluster {key}: Device Indices {indices}")
+
 
     # create pool
     param_queues = []
@@ -225,9 +261,14 @@ if __name__ == "__main__":
         # randomly select clients
         clients = []
 
-        for cluster in clusters.values():
-            cur_client = int(np.random.choice(cluster, size=1)[0])
-            clients.append(cur_client)
+        if args.is_proposed:
+            for i in range(3):
+                cur_client = int(np.random.choice(clusters[((round+i)%3,i)], size=1)[0])
+                clients.append(cur_client)
+        else:
+            for cluster in clusters.values():
+                cur_client = int(np.random.choice(cluster, size=1)[0])
+                clients.append(cur_client)
         
         print(clients)
 
