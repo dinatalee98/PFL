@@ -64,7 +64,7 @@ def get_dataset(args):
             exit('Error: unrecognized dataset')
         # sample users
         if args.uavfl:
-            dict_users = sampling_UAVFL(dataset_train, args.n_clients)
+            dict_users = sampling_UAVFL(dataset_train, args.n_clients, args.group_ratio)
         elif args.iid:
             dict_users = sampling_iid(dataset_train, args.n_clients)
         else:
@@ -76,8 +76,8 @@ def get_dataset(args):
     return dataset_train, dataset_test, dict_users
 
 
-def sampling_UAVFL(dataset, num_users):
-    def split_by_label(targets, label_groups, group_ratio=0.9):
+def sampling_UAVFL(dataset, num_users, group_ratio):
+    def split_by_label(targets, label_groups):
         group_indices = []
         other_indices = []
         
@@ -95,7 +95,7 @@ def sampling_UAVFL(dataset, num_users):
         
         return np.concatenate([group_sample, other_sample])
 
-    num_users_per_region = int(num_users / 3)
+    num_users_per_region = [60, 30, 30]
     label_split = [[0,1,2], [3,4,5], [6,7,8,9]]
     group_indices = []
 
@@ -107,14 +107,15 @@ def sampling_UAVFL(dataset, num_users):
 
     dict_users = {}
 
+    num_items = int(len(group_indices[0]) / (num_users_per_region[0]))
+    cur_idx = 0
     for n in range(3):
         all_idxs = group_indices[n]
-        num_items = int(len(all_idxs) / (num_users_per_region))
 
-        for i in range(num_users_per_region):
-            cur_user = n * num_users_per_region + i
-            dict_users[cur_user] = set(np.random.choice(all_idxs, num_items, replace=False))
-            all_idxs = list(set(all_idxs) - dict_users[cur_user])
+        for i in range(num_users_per_region[n]):
+            dict_users[cur_idx] = set(np.random.choice(all_idxs, num_items, replace=False))
+            all_idxs = list(set(all_idxs) - dict_users[cur_idx])
+            cur_idx += 1
 
     
     ## label distribution

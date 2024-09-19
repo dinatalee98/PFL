@@ -26,7 +26,7 @@ def args_parser():
     parser = argparse.ArgumentParser()
     # federated learning arguments
     parser.add_argument('--epochs', type=int, default=300, help="rounds of training")
-    parser.add_argument('--n_clients', type=int, default=30, help="number of users: K")
+    parser.add_argument('--n_clients', type=int, default=120, help="number of users: K")
     parser.add_argument('--frac', type=float, default=0.1, help="the fraction of clients: C")
     parser.add_argument('--local_ep', type=int, default=5, help="the number of local epochs: E")
     parser.add_argument('--local_bs', type=int, default=100, help="local batch size: B")
@@ -44,6 +44,7 @@ def args_parser():
     parser.add_argument('--beta', type=float, default=0.2, help="beta for Dirichlet distribution")
     parser.add_argument('--n_classes', type=int, default=10, help="number of classes")
     parser.add_argument('--n_channels', type=int, default=1, help="number of channels")
+    parser.add_argument('--group_ratio', type=float, default=0.95, help="labels ratio for region group")
 
     # optimizing arguments
     parser.add_argument('--optimizer', type=str, default='sgd', help="Optimizer (default: SGD)")
@@ -179,12 +180,12 @@ if __name__ == "__main__":
 
 
     # set iot devices
-    region1 = np.random.uniform(0, 10, (10, 2))
-    region2 = np.random.uniform(20, 30, (10, 2))
-    region3 = np.random.uniform(40, 50, (10, 2))
+    region1 = np.random.uniform(0, 10, (60, 2))
+    region2 = np.random.uniform(20, 30, (30, 2))
+    region3 = np.random.uniform(40, 50, (30, 2))
     data = np.vstack((region1, region2, region3))
 
-    iot_devices = [IoTDevice(x, y, np.random.uniform(1, 30, 30)) for (x, y) in data]
+    iot_devices = [IoTDevice(x, y, np.random.uniform(1, 30, 1)) for (x, y) in data]
     comp_times = np.array([device.get_computation_time() for device in iot_devices])
 
     ## K-means
