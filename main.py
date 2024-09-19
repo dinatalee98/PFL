@@ -180,9 +180,9 @@ if __name__ == "__main__":
 
 
     # set iot devices
-    region1 = np.random.uniform(0, 10, (60, 2))
-    region2 = np.random.uniform(20, 30, (30, 2))
-    region3 = np.random.uniform(40, 50, (30, 2))
+    region1 = np.random.uniform(0, 10, (int(args.n_clients/2), 2))
+    region2 = np.random.uniform(20, 30, (int(args.n_clients/4), 2))
+    region3 = np.random.uniform(40, 50, (int(args.n_clients/4), 2))
     data = np.vstack((region1, region2, region3))
 
     iot_devices = [IoTDevice(x, y, np.random.uniform(1, 30, 1)) for (x, y) in data]
