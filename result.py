@@ -4,12 +4,28 @@ import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--n_clients', type=int, default=120)
 args = parser.parse_args()
 
-pattern = re.compile(f'(proposed|speed|random)_{args.n_clients}_[0-9.]+\.csv')
-csv_files = [file for file in os.listdir('.') if pattern.match(file)]
+
+def get_first_matching_file(pattern):
+    regex = re.compile(pattern)
+    for file in os.listdir('.'):
+        if regex.match(file):
+            return file
+    return None
+
+proposed_result = re.compile(f'proposed_{args.n_clients}_[0-9.]+\.csv')
+speed_result = re.compile(f'speed_{args.n_clients}_[0-9.]+\.csv')
+random_result = re.compile(f'random_{args.n_clients}_[0-9.]+\.csv')
+
+csv_files = [
+    get_first_matching_file(proposed_result),
+    get_first_matching_file(speed_result),
+    get_first_matching_file(random_result),
+]
 
 test_accuracy_data = [np.loadtxt(file, delimiter=',') for file in csv_files]
 test_accuracy_data = np.vstack(test_accuracy_data)
@@ -27,7 +43,6 @@ plt.xticks(fontsize = 13)
 plt.yticks(fontsize = 13)
 plt.xlabel('Rounds',fontsize = fon)
 plt.ylabel('Test Accuracy', fontsize = fon)
-#plt.title(f'Test Accuracy over Rounds (n_clients: {args.n_clients})')
 plt.grid(True)
 
 plt.legend(fontsize = fon - 1)
