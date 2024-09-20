@@ -328,4 +328,4 @@ if __name__ == "__main__":
 
     # record test accuracies
     if not args.no_record:
-        np.savetxt(f"{args.algorithm}_{args.n_clients}_{args.frac}.csv", test_accs, delimiter=",")
+        np.savetxt(f"./result/{args.algorithm}_{args.n_clients}_{args.frac}.csv", test_accs, delimiter=",")

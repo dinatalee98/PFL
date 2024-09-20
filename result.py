@@ -12,7 +12,7 @@ args = parser.parse_args()
 
 def get_first_matching_file(pattern):
     regex = re.compile(pattern)
-    for file in os.listdir('.'):
+    for file in os.listdir('./result'):
         if regex.match(file):
             return file
     return None
@@ -48,4 +48,4 @@ plt.grid(True)
 plt.legend(fontsize = fon - 1)
 plt.tight_layout()
 
-plt.savefig(f'testacc_{args.n_clients}.png', bbox_inches='tight')
+plt.savefig(f'./result/testacc_{args.n_clients}.png', bbox_inches='tight')
