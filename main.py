@@ -61,7 +61,7 @@ def args_parser():
     # UAV-FL
     parser.add_argument('--uavfl', action='store_true', default=True, help='for UAVFL simulation')
     parser.add_argument('--group_ratio', type=float, default=0.95, help="labels ratio for region group")
-    parser.add_argument('--is_proposed', action='store_true', help='whether proposed or speed algorithm')
+    parser.add_argument('--algorithm', type=str, default='proposed', help="algorithm selection (proposed, speed, random)")
 
     args = parser.parse_args()
     return args
@@ -191,7 +191,7 @@ if __name__ == "__main__":
     iot_devices = [IoTDevice(x, y, np.random.uniform(1, 30, 1)) for (x, y) in region_data]
     comp_times = np.array([device.get_computation_time() for device in iot_devices])
 
-    if args.is_proposed:
+    if args.algorithm == 'proposed':
         dbscan = DBSCAN(eps=10, min_samples=10)
         dbscan_labels = dbscan.fit_predict(region_data)
 
@@ -220,7 +220,7 @@ if __name__ == "__main__":
 
             for i, reordered_label in enumerate(reordered_labels):
                 clusters[(cluster_label, reordered_label)].append(indices[i])
-    else:
+    elif args.algorithm == 'speed':
         kmeans = KMeans(n_clusters=3, random_state=1)
         kmeans.fit(comp_times)
 
@@ -232,9 +232,9 @@ if __name__ == "__main__":
                 clusters[label] = []
             clusters[label].append(i)
 
-
-    for key, indices in sorted(clusters.items()):
-        print(f"Cluster {key}: Device Indices {indices}")
+    if args.algorithm == 'proposed' or args.algorithm == 'speed':
+        for key, indices in sorted(clusters.items()):
+            print(f"Cluster {key}: Device Indices {indices}")
 
 
     # create pool
@@ -262,14 +262,17 @@ if __name__ == "__main__":
         # randomly select clients
         clients = []
 
-        if args.is_proposed:
+        if args.algorithm == 'proposed':
             for i in range(3):
                 cur_client = int(np.random.choice(clusters[((round+i)%3,i)], size=1)[0])
                 clients.append(cur_client)
-        else:
+        elif args.algorithm == 'speed':
             for cluster in clusters.values():
                 cur_client = int(np.random.choice(cluster, size=1)[0])
                 clients.append(cur_client)
+        else:
+            random.shuffle(client_all)
+            clients = client_all[:n_clients]
         
         print(clients)
 
