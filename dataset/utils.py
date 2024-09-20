@@ -95,7 +95,8 @@ def sampling_UAVFL(dataset, num_users, group_ratio):
         
         return np.concatenate([group_sample, other_sample])
 
-    num_users_per_region = [int(num_users/2), int(num_users/4), int(num_users/4)]
+    unit_num = int(num_users/4)
+    num_users_per_region = [unit_num*2, unit_num, num_users - unit_num*3]
     label_split = [[0,1,2], [3,4,5], [6,7,8,9]]
     group_indices = []
 

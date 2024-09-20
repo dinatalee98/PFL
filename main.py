@@ -18,9 +18,6 @@ from iot_device import IoTDevice
 from sklearn.cluster import DBSCAN, KMeans
 from collections import defaultdict, Counter
 
-np.random.seed(1)
-
-
 
 def args_parser():
     parser = argparse.ArgumentParser()
@@ -53,7 +50,7 @@ def args_parser():
     # misc
     parser.add_argument('--n_gpu', type=int, default=4, help="number of GPUs")
     parser.add_argument('--n_procs', type=int, default=1, help="number of processes per processor")
-    parser.add_argument('--seed', type=int, default=0, help='random seed (default: 0)')
+    parser.add_argument('--seed', type=int, default=1, help='random seed (default: 1)')
     parser.add_argument('--no_record', action='store_true', help='whether to record or not (default: record)')
     parser.add_argument('--load_checkpoint', action='store_true', help='whether to load model (default: do not load)')
     parser.add_argument('--use_checkpoint', action='store_true', help='whether to save best model (default: no checkpoint)')
@@ -183,9 +180,10 @@ if __name__ == "__main__":
 
 
     # set iot devices
-    region1 = np.random.uniform(0, 10, (int(args.n_clients/2), 2))
-    region2 = np.random.uniform(20, 30, (int(args.n_clients/4), 2))
-    region3 = np.random.uniform(40, 50, (int(args.n_clients/4), 2))
+    unit_num = int(args.n_clients/4)
+    region1 = np.random.uniform(0, 10, (2*unit_num, 2))
+    region2 = np.random.uniform(20, 30, (unit_num, 2))
+    region3 = np.random.uniform(40, 50, (args.n_clients-3*unit_num, 2))
     region_data = np.vstack((region1, region2, region3))
 
     iot_devices = [IoTDevice(x, y, np.random.uniform(1, 30, 1)) for (x, y) in region_data]
