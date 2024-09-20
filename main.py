@@ -330,14 +330,4 @@ if __name__ == "__main__":
 
     # record test accuracies
     if not args.no_record:
-        log_rootpath = './log'
-        if not os.path.exists(log_rootpath):
-            os.makedirs(log_rootpath)
-        accfile = open(log_rootpath + '/{}_{}_{}_L{}_C{}_{}_iid{}_spc{}.dat'.
-                    format(args.dataset, args.model, args.epochs, args.local_ep,
-                           args.frac, args.fed_strategy, args.iid, args.spc), "w")
-        for acc in test_accs:
-            str_ac = str(acc)
-            accfile.write(str_ac)
-            accfile.write('\n')
-        accfile.close()
+        np.savetxt(f"{args.algorithm}_{args.n_clients}_{args.frac}.csv", test_accs, delimiter=",")
