@@ -267,7 +267,7 @@ if __name__ == "__main__":
                 clients.extend(cur_client)
         elif args.algorithm == 'speed':
             for cluster in clusters.values():
-                cur_clients = np.random.choice(cluster, size=int(n_clients/3), replace=False)
+                cur_client = np.random.choice(cluster, size=int(n_clients/3), replace=False)
                 clients.extend(cur_client)
         else:
             random.shuffle(client_all)
