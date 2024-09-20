@@ -264,16 +264,18 @@ if __name__ == "__main__":
 
         if args.algorithm == 'proposed':
             for i in range(3):
-                cur_client = int(np.random.choice(clusters[((round+i)%3,i)], size=1)[0])
-                clients.append(cur_client)
+                cur_client = np.random.choice(clusters[((round+i)%3,i)], size=int(n_clients/3), replace=False)
+                clients.extend(cur_client)
         elif args.algorithm == 'speed':
             for cluster in clusters.values():
-                cur_client = int(np.random.choice(cluster, size=1)[0])
-                clients.append(cur_client)
+                cur_clients = np.random.choice(cluster, size=int(n_clients/3), replace=False)
+                clients.extend(cur_client)
         else:
             random.shuffle(client_all)
             clients = client_all[:n_clients]
         
+        clients = list(map(int, clients))
+
         print(clients)
 
         # assign clients to processes
