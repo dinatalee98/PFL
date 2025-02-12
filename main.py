@@ -186,54 +186,81 @@ if __name__ == "__main__":
     region3 = np.random.uniform(40, 50, (args.n_clients-3*unit_num, 2))
     region_data = np.vstack((region1, region2, region3))
 
-    iot_devices = [IoTDevice(x, y, np.random.uniform(1, 30, 1)) for (x, y) in region_data]
-    comp_times = np.array([device.get_computation_time() for device in iot_devices])
+    iot_devices = [IoTDevice(x, y, np.random.uniform(1, 30, 1), np.random.uniform(1, 30, 1)) for (x, y) in region_data]
+    comp_times = np.array([device.get_computation_time() for device in iot_devices]).flatten()
+
+    M = 10 # Number of subchannels
 
     if args.algorithm == 'proposed':
-        dbscan = DBSCAN(eps=10, min_samples=10)
-        dbscan_labels = dbscan.fit_predict(region_data)
+        ########################################################################
+        # Example: Pipeline-based clustering by local computation time
+        #
+        # 1) Sort devices by comp_times
+        # 2) Determine number of clusters J from the range of comp_times and tau
+        # 3) Group them in ascending order, ensuring each cluster has at least M devices
+        # 4) Store the result in a dictionary called `clusters`
+        ########################################################################
 
-        clustered_indices = defaultdict(list)
-        for idx, label in enumerate(dbscan_labels):
-            if label != -1:
-                clustered_indices[label].append(idx)
+        # Decide your 'tau' (time slot)
+        # For demonstration, we'll define them as constants below.
+        # Feel free to move them to args_parser() or set them in other ways.
+        tau = 5.0     # Example: time-slot length (seconds) or your own chosen unit
 
-        clusters = defaultdict(list)
-        for cluster_label, indices in clustered_indices.items():
-            comp_times_for_cluster = comp_times[indices].reshape(-1, 1)
+        # Sort clients by their compute times
+        sorted_indices = np.argsort(comp_times)       # Indices of devices sorted by ascending compute time
+        sorted_times = comp_times[sorted_indices]
+        
+        # Determine number of clusters, J
+        t_min, t_max = np.min(sorted_times), np.max(sorted_times)
+        # Safeguard against division by zero if tau <= 0
+        if tau <= 0:
+            J = 1
+        else:
+            # Example rule: number of clusters ~ (t_max - t_min) / tau
+            J_float = (t_max - t_min) / tau
+            J = int(np.ceil(J_float)) if J_float > 1 else 1
+        
+        print(f"[Pipeline Clustering] Computed number of clusters J = {J} (tau={tau}, M={M})")
+        
+        # Balanced cluster size if you want to keep them roughly uniform
+        # but with an additional constraint that each cluster has at least M devices
+        n_ideal = max(1, args.n_clients // J)
+        
+        ########################################################################
+        # Construct the clusters
+        ########################################################################
+        clusters = {}   # dictionary: cluster_id -> list of device indices
+        current_cluster_id = 0
+        
+        i = 0
+        while i < args.n_clients and current_cluster_id < J:
+            # Start a new cluster
+            clusters[current_cluster_id] = []
+            cluster_size = 0
             
-            kmeans = KMeans(n_clusters=3, random_state=1)
-            kmeans_labels = kmeans.fit_predict(comp_times_for_cluster)
-
-            cluster_medians = []
-            for k_label in range(3):
-                cluster_times = comp_times_for_cluster[kmeans_labels == k_label]
-                median_val = np.median(cluster_times)
-                cluster_medians.append((k_label, median_val))
-
-            sorted_clusters = sorted(cluster_medians, key=lambda x: -x[1])
-            label_mapping = {old_label: new_label for new_label, (old_label, _) in enumerate(sorted_clusters)}
-
-            reordered_labels = np.array([label_mapping[label] for label in kmeans_labels])
-
-            for i, reordered_label in enumerate(reordered_labels):
-                clusters[(cluster_label, reordered_label)].append(indices[i])
-    elif args.algorithm == 'speed':
-        kmeans = KMeans(n_clusters=3, random_state=1)
-        kmeans.fit(comp_times)
-
-        labels = kmeans.labels_
-
-        clusters = {}
-        for i, label in enumerate(labels):
-            if label not in clusters:
-                clusters[label] = []
-            clusters[label].append(i)
-
-    if args.algorithm == 'proposed' or args.algorithm == 'speed':
-        for key, indices in sorted(clusters.items()):
-            print(f"Cluster {key}: Device Indices {indices}")
-
+            # Fill up to n_ideal
+            while cluster_size < n_ideal and i < args.n_clients:
+                clusters[current_cluster_id].append(sorted_indices[i])
+                i += 1
+                cluster_size += 1
+            
+            # If this new cluster hasn't reached M devices, try adding more
+            while cluster_size < M and i < args.n_clients:
+                clusters[current_cluster_id].append(sorted_indices[i])
+                i += 1
+                cluster_size += 1
+            
+            current_cluster_id += 1
+        
+        # If leftover devices remain, assign them to whichever cluster(s) you like
+        # for balanced distribution or simply to the last cluster:
+        while i < args.n_clients:
+            clusters[current_cluster_id - 1].append(sorted_indices[i])
+            i += 1
+        
+        # Print final clusters
+        for cid, devs in clusters.items():
+            print(f"Cluster {cid}: {len(devs)} devices -> {devs}")
 
     # create pool
     param_queues = []
@@ -255,25 +282,133 @@ if __name__ == "__main__":
     c = zero_grad(global_model)
     lr = args.lr
     test_accs = []
+
+    ########################################################################
+    # Client selection
+    ########################################################################
+
+    MIN_BATTERY = 10.0
+    MAX_COMM_TIME = 5.0
+
+    uav_pos = np.array([0.0, 0.0, 100.0])  # (x, y, z)
+
     for round in range(args.epochs):
-        # randomly select clients
-        clients = []
+        ########################################################################
+        # 1) 모든 클라이언트에 대한 feasibility check (공통)
+        ########################################################################
+        feasible_clients = []
 
+        # UAV 움직임
+        # 예: uav_pos = np.array([x, y, z])
+        # Example: compute model parameter size (in bits)
+        model_param_count = sum(p.numel() for p in global_model.parameters())
+        model_param_size_bits = model_param_count * 32  # float32 => 32 bits
+
+        for k in range(args.n_clients):
+            battery_ok = (iot_devices[k].get_battery() >= MIN_BATTERY)   # 예: 배터리 임계값
+            comm_ok    = (iot_devices[k].get_commtime(uav_pos, model_param_size_bits)  <= MAX_COMM_TIME)  # 예: 통신시간 임계값
+            if battery_ok and comm_ok:
+                feasible_clients.append(k)
+
+        # 만약 하나도 feasible 하지 않다면, 이번 라운드는 그냥 건너뛴다거나 하는 처리
+        if len(feasible_clients) == 0:
+            print(f"Round {round+1}: No feasible client. Skipping...")
+            # 원하는 대로 처리 (continue 등)
+            continue
+
+        ########################################################################
+        # 2) Selection 방식에 따른 분기 (Proposed / Speed / Random 등)
+        ########################################################################
         if args.algorithm == 'proposed':
-            for i in range(3):
-                cur_client = np.random.choice(clusters[((round+i)%3,i)], size=int(n_clients/3), replace=False)
-                clients.extend(cur_client)
-        elif args.algorithm == 'speed':
-            for cluster in clusters.values():
-                cur_client = np.random.choice(cluster, size=int(n_clients/3), replace=False)
-                clients.extend(cur_client)
-        else:
-            random.shuffle(client_all)
-            clients = client_all[:n_clients]
-        
-        clients = list(map(int, clients))
+            # (a) 미리 만들어놓은 파이프라인 클러스터(예: compute-time 기반)
+            #     clusters: dict -> cluster_id -> list_of_device_indices
+            # (b) 각 클러스터별로 feasible_clients와의 교집합만 뽑기
+            # (c) Utility + Epsilon-Greedy 등 적용
 
-        print(clients)
+            # 예시: n_clients = int(args.frac * args.n_clients)
+            n_clients = M  # 예시: M = 10
+            cluster_ids = sorted(clusters.keys())
+            print(f"[Round {round+1}] Proposed: {len(cluster_ids)} clusters -> {cluster_ids}")
+            print(clusters)
+            leftover = n_clients % len(cluster_ids)
+            base_size = n_clients // len(cluster_ids)
+
+            # epsilon 갱신용
+            if 'epsilon' not in locals():
+                epsilon = 1.0
+            epsilon_min   = 0.1
+            epsilon_decay = 0.95
+
+            selected_clients = []
+
+            for cid in cluster_ids:
+                # 2-1) 클러스터 내 클라이언트
+                cluster_indices = clusters[cid]
+
+                # 2-2) 'feasible_clients'와 교집합
+                feasible_in_cluster = list(set(cluster_indices).intersection(feasible_clients))
+                if len(feasible_in_cluster) == 0:
+                    continue
+
+                # 2-3) 뽑을 클라이언트 수 계산
+                pick_size = base_size
+                if leftover > 0:
+                    pick_size += 1
+                    leftover -= 1
+                pick_size = min(pick_size, len(feasible_in_cluster))
+
+                # 2-4) 유틸리티 계산 (예: 랜덤 예시)
+                U_array = np.random.rand(len(feasible_in_cluster))
+                U_sum   = np.sum(U_array) if np.sum(U_array) > 0 else 1e-12
+
+                # 2-5) Epsilon-Greedy 선택
+                chosen_indices = []
+                idx_order = np.random.permutation(len(feasible_in_cluster))
+                for idx in idx_order:
+                    if len(chosen_indices) >= pick_size:
+                        break
+                    k = feasible_in_cluster[idx]
+                    U_k = U_array[idx]
+                    p_k = epsilon*(U_k/U_sum) + (1-epsilon)*(1.0/len(feasible_in_cluster))
+                    if np.random.rand() <= p_k:
+                        chosen_indices.append(k)
+
+                selected_clients.extend(chosen_indices)
+
+            # epsilon decay
+            epsilon = max(epsilon_min, epsilon*epsilon_decay)
+
+            print(f"[Round {round+1}] Proposed: {len(selected_clients)} clients selected -> {selected_clients}")
+
+            # >>> 이후 local_train, aggregation 등에 selected_clients 사용
+
+        elif args.algorithm == 'speed':
+            # Speed Selection 예시:
+            #  - 이미 KMeans 등으로 speed-based cluster를 구했다고 가정
+            #  - 혹은 단순히 comp_times가 작은 순으로 pick
+            #  - 이때도 feasible_clients만 대상으로 함
+
+            # 예: comp_times가 작은 순서대로 feasible_clients를 정렬한 뒤 n_clients만큼 뽑기
+            feasible_comp_times = [(k, comp_times[k]) for k in feasible_clients]
+            feasible_comp_times.sort(key=lambda x: x[1])  # ascending
+            selected_clients = [x[0] for x in feasible_comp_times[:M]]
+
+            print(f"[Round {round+1}] Speed: {len(selected_clients)} clients selected -> {selected_clients}")
+
+            # >>> 이후 local_train, aggregation 등에 selected_clients 사용
+
+        else:
+            # Random Selection (IID):
+            #  - feasible_clients 중에서 n_clients 뽑기
+            selected_clients = np.random.choice(feasible_clients, size = M, replace=False)
+            print(f"[Round {round+1}] Random: {len(selected_clients)} -> {selected_clients}")
+
+        ########################################################################
+        # 3) 실제 로컬 훈련, 파라미터 큐 전송, 결과 수신, 모델 집계 등
+        ########################################################################
+        # 예: param_queue에 model_param, lr, sel_clients=selected_clients 등을 보내고,
+        #     result_queues에서 w_locals, loss_locals 수신한 뒤 aggregate
+        clients = list(map(int, selected_clients))
 
         # assign clients to processes
         assigned_clients = []
