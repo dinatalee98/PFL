@@ -23,7 +23,7 @@ def args_parser():
     parser = argparse.ArgumentParser()
     # federated learning arguments
     parser.add_argument('--epochs', type=int, default=300, help="rounds of training")
-    parser.add_argument('--n_clients', type=int, default=120, help="number of users: K")
+    parser.add_argument('--n_clients', type=int, default=100, help="number of users: K")
     parser.add_argument('--frac', type=float, default=1.0, help="the fraction of clients: C")
     parser.add_argument('--local_ep', type=int, default=5, help="the number of local epochs: E")
     parser.add_argument('--local_bs', type=int, default=100, help="local batch size: B")
@@ -190,6 +190,7 @@ if __name__ == "__main__":
     comp_times = np.array([device.get_computation_time() for device in iot_devices]).flatten()
 
     M = 10 # Number of subchannels
+    J = 1  # Number of clusters
 
     if args.algorithm == 'proposed':
         ########################################################################
@@ -327,11 +328,12 @@ if __name__ == "__main__":
 
             # 예시: n_clients = int(args.frac * args.n_clients)
             n_clients = M  # 예시: M = 10
-            cluster_ids = sorted(clusters.keys())
+            cluster_ids = clusters.keys()
+            """
             print(f"[Round {round+1}] Proposed: {len(cluster_ids)} clusters -> {cluster_ids}")
-            print(clusters)
             leftover = n_clients % len(cluster_ids)
             base_size = n_clients // len(cluster_ids)
+            """
 
             # epsilon 갱신용
             if 'epsilon' not in locals():
@@ -350,12 +352,14 @@ if __name__ == "__main__":
                 if len(feasible_in_cluster) == 0:
                     continue
 
+                """
                 # 2-3) 뽑을 클라이언트 수 계산
                 pick_size = base_size
                 if leftover > 0:
                     pick_size += 1
                     leftover -= 1
                 pick_size = min(pick_size, len(feasible_in_cluster))
+                """
 
                 # 2-4) 유틸리티 계산 (예: 랜덤 예시)
                 U_array = np.random.rand(len(feasible_in_cluster))
@@ -364,14 +368,23 @@ if __name__ == "__main__":
                 # 2-5) Epsilon-Greedy 선택
                 chosen_indices = []
                 idx_order = np.random.permutation(len(feasible_in_cluster))
-                for idx in idx_order:
-                    if len(chosen_indices) >= pick_size:
-                        break
-                    k = feasible_in_cluster[idx]
-                    U_k = U_array[idx]
-                    p_k = epsilon*(U_k/U_sum) + (1-epsilon)*(1.0/len(feasible_in_cluster))
-                    if np.random.rand() <= p_k:
-                        chosen_indices.append(k)
+                print(f"Cluster {cid}: {len(feasible_in_cluster)} feasible clients -> {feasible_in_cluster}")
+                print(idx_order)
+                if epsilon < np.random.rand():
+                    # Randomly select M elements from feasible_in_cluster
+                    if len(feasible_in_cluster) >= M:
+                        chosen_indices = np.random.choice(feasible_in_cluster, size=M, replace=False)
+                    else:
+                        chosen_indices = feasible_in_cluster
+                else:
+                    # U_k가 큰 상위 M개 요소 선택
+                    if len(feasible_in_cluster) >= M:
+                        # U_array와 feasible_in_cluster를 함께 정렬
+                        sorted_indices = np.argsort(U_array)[::-1]  # 내림차순 정렬
+                        top_M_indices = sorted_indices[:M]
+                        chosen_indices = [feasible_in_cluster[idx] for idx in top_M_indices]
+                    else:
+                        chosen_indices = feasible_in_cluster
 
                 selected_clients.extend(chosen_indices)
 
@@ -412,7 +425,8 @@ if __name__ == "__main__":
 
         # assign clients to processes
         assigned_clients = []
-        n_assigned_client = n_clients // n_processes
+        n_assigned_client = J * n_clients // n_processes
+        print(f"Assigned clients: {n_assigned_client} per process")
         for i in range(n_processes):
             assigned_clients.append(clients[:n_assigned_client])
             del clients[:n_assigned_client]
