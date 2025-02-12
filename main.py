@@ -135,7 +135,7 @@ if __name__ == "__main__":
 
     # parse args and set seed
     args = args_parser()
-    print("> Settings:", "epochs=",args.epochs, "n_clients=", args.n_clients, "algorithm=", args.algorithm)
+    print("> Settings:", "epochs=",args.epochs, "n_clients=", args.n_clients, "algorithm=", args.algorithm, "dataset=", args.dataset, "model=", args.model, "iid=", args.iid)
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
@@ -186,8 +186,11 @@ if __name__ == "__main__":
     region3 = np.random.uniform(40, 50, (args.n_clients-3*unit_num, 2))
     region_data = np.vstack((region1, region2, region3))
 
-    iot_devices = [IoTDevice(x, y, np.random.uniform(1, 30, 1), np.random.uniform(1, 30, 1)) for (x, y) in region_data]
+    num_of_data = np.array([len(dict_users[k]) for k in range(args.n_clients)])
+    iot_devices = [IoTDevice(x, y, num_of_data, np.random.uniform(1, 30, 1)) for (x, y) in region_data]
+    
     comp_times = np.array([device.get_computation_time() for device in iot_devices]).flatten()
+
 
     M = 10 # Number of subchannels
     J = 1  # Number of clusters
@@ -372,8 +375,6 @@ if __name__ == "__main__":
                 # (c) "학습 전"에 계산한 유틸리티 배열 생성
                 U_array = np.array([ utilities[idx] for idx in feasible_in_cluster ])
                 U_sum   = np.sum(U_array) if np.sum(U_array) > 0 else 1e-12
-
-                print(U_array)
                 # 2-5) Epsilon-Greedy 선택
                 chosen_indices = []
                 idx_order = np.random.permutation(len(feasible_in_cluster))

@@ -6,18 +6,22 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 class IoTDevice:
-    def __init__(self, x, y, t, b):
+    def __init__(self, x, y, D_k, b):
         self.x = x
         self.y = y
-        self.comp_time = t
+        self.num_of_data = D_k
         self.battery = b
         self.comm_power = 10  #10 ~ 30 dBm
     
     def get_location(self):
         return np.array([self.x, self.y])
     
-    def get_computation_time(self):
-        return self.comp_time
+    def computation_time_energy(self, data): # Eq 3 & 4
+        c_k = 10              # cycles per sample
+        f_k = 5e9             # CPU frequency (Hz)
+        D_k = len(data) * 8   # data size in bits
+        t_comp = (c_k * D_k) / f_k
+        return t_comp
     
     def get_battery(self):
         return self.battery
@@ -145,7 +149,7 @@ class IoTDevice:
         p_k = self.comm_power
         return p_k * t_comm
 
-    def comp_energy(D_k):
+    def comp_energy(self):
         """
         E_k^{comp} = a_k * alpha_k/2 * c_k * D_k * f_k^2
         For simplicity, assume a_k=1 always if computing. We incorporate alpha_k/2 in code directly.
@@ -153,7 +157,7 @@ class IoTDevice:
         c_k = 10              # cycles per sample
         f_k = 5e9             # CPU frequency (Hz)
         alpha_k = 1e-28       # effective capacitance coefficient * 2 (splitting the factor in the code)
-        return (alpha_k * c_k * D_k * (f_k**2)) / 2.0
+        return (alpha_k * c_k * self.D_k * (f_k**2)) / 2.0
     
 
 
@@ -206,3 +210,34 @@ class IoTDevice:
         # Utility
         U_k = D_k * math.sqrt(avg_loss_sq)
         return U_k
+    
+    def compute_pretraining_utility(self, model, local_dataset, device):
+        """
+        - model: 현재 글로벌 모델 (학습 전 상태)
+        - local_dataset: 클라이언트 k의 로컬 데이터로 구성된 DataLoader (또는 리스트)
+        - device: "gpu" or "cpu"
+
+        U^{stat}_k = D_{k} * sqrt( (1/D_{k}) * Σ(loss^2(x_d, y_d)) )
+        """
+        model.eval()
+        model.to(device)
+
+        sum_loss_sq = 0.0
+        total_samples = 0
+
+        with torch.no_grad():
+            for x, y in local_dataset:
+                x = x.to(device)
+                y = y.to(device)
+                out = model(x)
+                # 예: CrossEntropy Loss를 샘플별로 계산
+                loss_per_sample = F.cross_entropy(out, y, reduction='none')
+                sum_loss_sq += (loss_per_sample ** 2).sum().item()
+                total_samples += x.size(0)
+
+        if total_samples > 0:
+            stat_utility = total_samples * math.sqrt(sum_loss_sq / total_samples)
+        else:
+            stat_utility = 0.0
+
+        return stat_utility
