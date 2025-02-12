@@ -135,7 +135,7 @@ if __name__ == "__main__":
 
     # parse args and set seed
     args = args_parser()
-    print("> Settings: ", args)
+    print("> Settings:", "epochs=",args.epochs, "n_clients=", args.n_clients, "algorithm=", args.algorithm)
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
@@ -221,7 +221,7 @@ if __name__ == "__main__":
             J_float = (t_max - t_min) / tau
             J = int(np.ceil(J_float)) if J_float > 1 else 1
         
-        print(f"[Pipeline Clustering] Computed number of clusters J = {J} (tau={tau}, M={M})")
+        #print(f"[Pipeline Clustering] Computed number of clusters J = {J} (tau={tau}, M={M})")
         
         # Balanced cluster size if you want to keep them roughly uniform
         # but with an additional constraint that each cluster has at least M devices
@@ -261,7 +261,8 @@ if __name__ == "__main__":
         
         # Print final clusters
         for cid, devs in clusters.items():
-            print(f"Cluster {cid}: {len(devs)} devices -> {devs}")
+            #print(f"Cluster {cid}: {len(devs)} devices -> {devs}")
+            pass
 
     # create pool
     param_queues = []
@@ -294,6 +295,20 @@ if __name__ == "__main__":
     uav_pos = np.array([0.0, 0.0, 100.0])  # (x, y, z)
 
     for round in range(args.epochs):
+        ########################################################################
+        # 1) 각 클라이언트별 "현재 글로벌 모델 기준" 유틸리티 계산
+        ########################################################################
+        #  - iot_devices[k].get_local_dataset() 등으로 해당 클라이언트 데이터 획득
+        #  - compute_pretraining_utility(...) 호출
+        #  - 결과를 배열 or dict에 저장
+        ########################################################################
+        utilities = [0.0] * args.n_clients
+        global_model.load_state_dict(w_glob)   # 직전 라운드까지 집계된 글로벌 모델
+        for k in range(args.n_clients):
+            local_dataset_k = iot_devices[k].get_local_dataset()  # 예시: DataLoader
+            utilities[k] = iot_devices[k].compute_pretraining_utility(
+                global_model, local_dataset_k, device=devices[-1]
+            )
         ########################################################################
         # 1) 모든 클라이언트에 대한 feasibility check (공통)
         ########################################################################
@@ -352,24 +367,15 @@ if __name__ == "__main__":
                 if len(feasible_in_cluster) == 0:
                     continue
 
-                """
-                # 2-3) 뽑을 클라이언트 수 계산
-                pick_size = base_size
-                if leftover > 0:
-                    pick_size += 1
-                    leftover -= 1
-                pick_size = min(pick_size, len(feasible_in_cluster))
-                """
-
                 # 2-4) 유틸리티 계산 (예: 랜덤 예시)
-                U_array = np.random.rand(len(feasible_in_cluster))
+                # (c) "학습 전"에 계산한 유틸리티 배열 생성
+                U_array = np.array([ utilities[idx] for idx in feasible_in_cluster ])
                 U_sum   = np.sum(U_array) if np.sum(U_array) > 0 else 1e-12
 
+                print(U_array)
                 # 2-5) Epsilon-Greedy 선택
                 chosen_indices = []
                 idx_order = np.random.permutation(len(feasible_in_cluster))
-                print(f"Cluster {cid}: {len(feasible_in_cluster)} feasible clients -> {feasible_in_cluster}")
-                print(idx_order)
                 if epsilon < np.random.rand():
                     # Randomly select M elements from feasible_in_cluster
                     if len(feasible_in_cluster) >= M:
@@ -391,7 +397,7 @@ if __name__ == "__main__":
             # epsilon decay
             epsilon = max(epsilon_min, epsilon*epsilon_decay)
 
-            print(f"[Round {round+1}] Proposed: {len(selected_clients)} clients selected -> {selected_clients}")
+            # print(f"[Round {round+1}] Proposed: {len(selected_clients)} clients selected -> {selected_clients}")
 
             # >>> 이후 local_train, aggregation 등에 selected_clients 사용
 
