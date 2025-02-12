@@ -305,7 +305,8 @@ if __name__ == "__main__":
         utilities = [0.0] * args.n_clients
         global_model.load_state_dict(w_glob)   # 직전 라운드까지 집계된 글로벌 모델
         for k in range(args.n_clients):
-            local_dataset_k = iot_devices[k].get_local_dataset()  # 예시: DataLoader
+            local_indices = list(dict_users[k])
+            local_dataset_k = DataLoader(DatasetSplit(train_dataset, local_indices), batch_size=args.local_bs, shuffle=True)
             utilities[k] = iot_devices[k].compute_pretraining_utility(
                 global_model, local_dataset_k, device=devices[-1]
             )
