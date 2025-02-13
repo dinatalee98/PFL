@@ -187,10 +187,10 @@ if __name__ == "__main__":
     region_data = np.vstack((region1, region2, region3))
 
     num_of_data = np.array([len(dict_users[k]) for k in range(args.n_clients)])
-    iot_devices = [IoTDevice(x, y, num_of_data, np.random.uniform(1, 30, 1)) for (x, y) in region_data]
+    iot_devices = [IoTDevice(x, y, num_of_data, np.random.uniform(1, 30, 1), args.dataset) for (x, y) in region_data]
     
     comp_times = np.array([device.get_computation_time() for device in iot_devices]).flatten()
-
+    # print(f"Computation times: {comp_times}")
 
     M = 10 # Number of subchannels
     J = 1  # Number of clusters
@@ -224,7 +224,7 @@ if __name__ == "__main__":
             J_float = (t_max - t_min) / tau
             J = int(np.ceil(J_float)) if J_float > 1 else 1
         
-        #print(f"[Pipeline Clustering] Computed number of clusters J = {J} (tau={tau}, M={M})")
+        print(f"[Pipeline Clustering] Computed number of clusters J = {J} (tau={tau}, M={M})")
         
         # Balanced cluster size if you want to keep them roughly uniform
         # but with an additional constraint that each cluster has at least M devices

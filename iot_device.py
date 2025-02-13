@@ -6,20 +6,24 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 class IoTDevice:
-    def __init__(self, x, y, D_k, b):
+    def __init__(self, x, y, D_k, b, dataset):
         self.x = x
         self.y = y
         self.num_of_data = D_k
         self.battery = b
         self.comm_power = 10  #10 ~ 30 dBm
+        self.dataset = dataset
     
     def get_location(self):
         return np.array([self.x, self.y])
     
-    def computation_time_energy(self, data): # Eq 3 & 4
+    def get_computation_time(self): # Eq 3 & 4
         c_k = 10              # cycles per sample
         f_k = 5e9             # CPU frequency (Hz)
-        D_k = len(data) * 8   # data size in bits
+        data_size_per_sample = 0
+        if self.dataset == "mnist":
+            data_size_per_sample = 28 * 28
+        D_k = self.num_of_data * data_size_per_sample   # data size in bits
         t_comp = (c_k * D_k) / f_k
         return t_comp
     
@@ -149,7 +153,7 @@ class IoTDevice:
         p_k = self.comm_power
         return p_k * t_comm
 
-    def comp_energy(self):
+    def get_comp_energy(self):
         """
         E_k^{comp} = a_k * alpha_k/2 * c_k * D_k * f_k^2
         For simplicity, assume a_k=1 always if computing. We incorporate alpha_k/2 in code directly.
