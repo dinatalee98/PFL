@@ -56,7 +56,7 @@ def args_parser():
     parser.add_argument('--use_checkpoint', action='store_true', help='whether to save best model (default: no checkpoint)')
 
     # UAV-FL
-    parser.add_argument('--uavfl', action='store_true', default=True, help='for UAVFL simulation')
+    parser.add_argument('--uavfl', action='store_true', help='for UAVFL simulation')
     parser.add_argument('--group_ratio', type=float, default=0.95, help="labels ratio for region group")
     parser.add_argument('--algorithm', type=str, default='proposed', help="algorithm selection (proposed, speed, random)")
 
@@ -178,7 +178,7 @@ if __name__ == "__main__":
         s.K = 15
         client_settings.append(s)
 
-
+    # print(dict_users[0])
     # set iot devices
     unit_num = int(args.n_clients/4)
     region1 = np.random.uniform(0, 10, (2*unit_num, 2))
@@ -208,7 +208,7 @@ if __name__ == "__main__":
         # Decide your 'tau' (time slot)
         # For demonstration, we'll define them as constants below.
         # Feel free to move them to args_parser() or set them in other ways.
-        tau = 5.0     # Example: time-slot length (seconds) or your own chosen unit
+        tau = 0.0005     # Example: time-slot length (seconds) or your own chosen unit
 
         # Sort clients by their compute times
         sorted_indices = np.argsort(comp_times)       # Indices of devices sorted by ascending compute time
@@ -330,6 +330,7 @@ if __name__ == "__main__":
             if battery_ok and comm_ok:
                 feasible_clients.append(k)
 
+        # print(f"[Round {round+1}] {len(feasible_clients)} feasible clients -> {feasible_clients}")
         # 만약 하나도 feasible 하지 않다면, 이번 라운드는 그냥 건너뛴다거나 하는 처리
         if len(feasible_clients) == 0:
             print(f"Round {round+1}: No feasible client. Skipping...")
@@ -346,14 +347,15 @@ if __name__ == "__main__":
             # (c) Utility + Epsilon-Greedy 등 적용
 
             # 예시: n_clients = int(args.frac * args.n_clients)
-            n_clients = M  # 예시: M = 10
+            # subchannels = M  # 예시: M = 10
             cluster_ids = clusters.keys()
+            
+            # print(f"[Round {round+1}] Proposed: {len(cluster_ids)} clusters -> {cluster_ids}")
             """
-            print(f"[Round {round+1}] Proposed: {len(cluster_ids)} clusters -> {cluster_ids}")
             leftover = n_clients % len(cluster_ids)
             base_size = n_clients // len(cluster_ids)
             """
-
+            # print(feasible_clients)
             # epsilon 갱신용
             if 'epsilon' not in locals():
                 epsilon = 1.0
@@ -361,19 +363,23 @@ if __name__ == "__main__":
             epsilon_decay = 0.95
 
             selected_clients = []
-
+            
             for cid in cluster_ids:
                 # 2-1) 클러스터 내 클라이언트
                 cluster_indices = clusters[cid]
-
+                
+                print(f"Cluster {cid}: {len(cluster_indices)} clients -> {cluster_indices}")
+                print(feasible_clients)
                 # 2-2) 'feasible_clients'와 교집합
                 feasible_in_cluster = list(set(cluster_indices).intersection(feasible_clients))
                 if len(feasible_in_cluster) == 0:
+                    print(f"Cluster {cid}: No feasible client. Skipping...")
                     continue
-
+                print(f"Cluster {cid}: {len(feasible_in_cluster)} feasible clients -> {feasible_in_cluster}")
                 # 2-4) 유틸리티 계산 (예: 랜덤 예시)
                 # (c) "학습 전"에 계산한 유틸리티 배열 생성
                 U_array = np.array([ utilities[idx] for idx in feasible_in_cluster ])
+                print(f"Cluster {cid}: {len(feasible_in_cluster)} feasible clients -> U = {U_array}")
                 U_sum   = np.sum(U_array) if np.sum(U_array) > 0 else 1e-12
                 # 2-5) Epsilon-Greedy 선택
                 chosen_indices = []
@@ -399,7 +405,7 @@ if __name__ == "__main__":
             # epsilon decay
             epsilon = max(epsilon_min, epsilon*epsilon_decay)
 
-            # print(f"[Round {round+1}] Proposed: {len(selected_clients)} clients selected -> {selected_clients}")
+            print(f"[Round {round+1}] Proposed: {len(selected_clients)} clients selected -> {selected_clients}")
 
             # >>> 이후 local_train, aggregation 등에 selected_clients 사용
 
@@ -430,16 +436,18 @@ if __name__ == "__main__":
         # 예: param_queue에 model_param, lr, sel_clients=selected_clients 등을 보내고,
         #     result_queues에서 w_locals, loss_locals 수신한 뒤 aggregate
         clients = list(map(int, selected_clients))
-
+        print(selected_clients)
+        print(clients)
         # assign clients to processes
         assigned_clients = []
-        n_assigned_client = J * n_clients // n_processes
-        print(f"Assigned clients: {n_assigned_client} per process")
+        n_assigned_client = J * M // n_processes
+        #print(f"Assigned clients: {n_assigned_client} per process")
         for i in range(n_processes):
             assigned_clients.append(clients[:n_assigned_client])
             del clients[:n_assigned_client]
         for i, rest in enumerate(clients):
             assigned_clients[i].append(rest)
+        print(f"Assigned clients: {assigned_clients}")
 
         # start training
         start_time = time.time()

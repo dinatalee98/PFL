@@ -20,7 +20,7 @@ class IoTDevice:
     def get_computation_time(self): # Eq 3 & 4
         c_k = 10              # cycles per sample
         f_k = 5e9             # CPU frequency (Hz)
-        data_size_per_sample = 0
+        data_size_per_sample = 28 * 28
         if self.dataset == "mnist":
             data_size_per_sample = 28 * 28
         D_k = self.num_of_data * data_size_per_sample   # data size in bits

@@ -65,13 +65,16 @@ def get_dataset(args):
         # sample users
         if args.uavfl:
             dict_users = sampling_UAVFL(dataset_train, args.n_clients, args.group_ratio)
+            print("Warning: You are running UAVFL sampling")
         elif args.iid:
             dict_users = sampling_iid(dataset_train, args.n_clients)
+            print("Warning: You are running IID sampling")
         else:
             if args.spc:
                 dict_users = sampling_spc(dataset_train, args.n_clients)
             else:
                 dict_users = sampling_dirichlet(dataset_train, args.n_clients, beta=args.beta)
+                print("Warning: You are running non-IID sampling")
 
     return dataset_train, dataset_test, dict_users
 
@@ -146,6 +149,22 @@ def sampling_iid(dataset, num_users):
         return "Error"
     return dict_users
 
+def sampling_noniid(dataset, num_users):
+    """
+    Sample I.I.D. client data from MNIST dataset
+    :param dataset:
+    :param num_users:
+    :return: dict of image index
+    """
+    dict_users = {}
+    num_items = int(len(dataset) / num_users)
+    all_idxs = [i for i in range(len(dataset))]
+    for i in range(num_users):
+        dict_users[i] = set(np.random.choice(all_idxs, num_items, replace=False))
+        all_idxs = list(set(all_idxs) - dict_users[i])
+    if dict_users == {}:
+        return "Error"
+    return dict_users
 
 def sampling_spc(dataset, num_users):
     """
@@ -175,15 +194,15 @@ def sampling_spc(dataset, num_users):
         return "Error"
     return dict_users
 
-
+"""
 def sampling_dirichlet(dataset, num_users, beta=0.2):
-    """
+
     dirichlet sampling
     :param dataset:
     :param num_users:
     :param beta:
     :return: dict of image index
-    """
+    
     min_size = 0
     labels = np.array(dataset.targets)
     while min_size < 10:
@@ -199,6 +218,35 @@ def sampling_dirichlet(dataset, num_users, beta=0.2):
             splitted_indices = np.split(indices, proportions)
             for i in range(num_users):
                 dict_users[i] = np.concatenate((dict_users[i], splitted_indices[i]))
+        min_size = min([len(indices) for indices in dict_users.values()])
+    if dict_users == {}:
+        return "Error"
+    return dict_users
+"""
+
+def sampling_dirichlet(dataset, num_users, beta=0.2):
+    """
+    dirichlet sampling
+    :param dataset:
+    :param num_users:
+    :param beta:
+    :return: dict of image index
+    """
+    min_size = 0
+    labels = np.array(dataset.targets)
+    while min_size < 10:
+        dict_users = {i: set() for i in range(num_users)}
+        for indices in [(labels == l).nonzero()[0] for l in np.unique(labels)]:
+            indices = indices[np.random.permutation(len(indices))]
+            p = np.random.dirichlet(np.repeat(beta, num_users))
+            proportions = np.zeros(num_users)
+            for i in range(num_users):
+                proportions[i] = p[i] * (len(dict_users[i]) < (len(labels) / num_users))
+            proportions = proportions / proportions.sum()
+            proportions = (np.cumsum(proportions) * len(indices)).astype(int)[:-1]
+            splitted_indices = np.split(indices, proportions)
+            for i in range(num_users):
+                dict_users[i].update(splitted_indices[i])
         min_size = min([len(indices) for indices in dict_users.values()])
     if dict_users == {}:
         return "Error"
