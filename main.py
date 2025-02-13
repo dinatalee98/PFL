@@ -186,11 +186,11 @@ if __name__ == "__main__":
     region3 = np.random.uniform(40, 50, (args.n_clients-3*unit_num, 2))
     region_data = np.vstack((region1, region2, region3))
 
-    num_of_data = np.array([len(dict_users[k]) for k in range(args.n_clients)])
-    iot_devices = [IoTDevice(x, y, num_of_data, np.random.uniform(1, 30, 1), args.dataset) for (x, y) in region_data]
-    
+    iot_devices = [IoTDevice(x, y, len(dict_users[k]), np.random.uniform(1, 30, 1), args.dataset) for k, (x, y) in enumerate(region_data)]
+
     comp_times = np.array([device.get_computation_time() for device in iot_devices]).flatten()
-    # print(f"Computation times: {comp_times}")
+
+    #print(f"Computation times: {comp_times}")
 
     M = 10 # Number of subchannels
     J = 1  # Number of clusters
@@ -212,7 +212,7 @@ if __name__ == "__main__":
 
         # Sort clients by their compute times
         sorted_indices = np.argsort(comp_times)       # Indices of devices sorted by ascending compute time
-        sorted_times = comp_times[sorted_indices]
+        sorted_times = comp_times[sorted_indices]     # Sorted compute times
         
         # Determine number of clusters, J
         t_min, t_max = np.min(sorted_times), np.max(sorted_times)
@@ -367,19 +367,16 @@ if __name__ == "__main__":
             for cid in cluster_ids:
                 # 2-1) 클러스터 내 클라이언트
                 cluster_indices = clusters[cid]
-                
-                print(f"Cluster {cid}: {len(cluster_indices)} clients -> {cluster_indices}")
-                print(feasible_clients)
                 # 2-2) 'feasible_clients'와 교집합
                 feasible_in_cluster = list(set(cluster_indices).intersection(feasible_clients))
                 if len(feasible_in_cluster) == 0:
                     print(f"Cluster {cid}: No feasible client. Skipping...")
                     continue
-                print(f"Cluster {cid}: {len(feasible_in_cluster)} feasible clients -> {feasible_in_cluster}")
+                # print(f"Cluster {cid}: {len(feasible_in_cluster)} feasible clients -> {feasible_in_cluster}")
                 # 2-4) 유틸리티 계산 (예: 랜덤 예시)
                 # (c) "학습 전"에 계산한 유틸리티 배열 생성
                 U_array = np.array([ utilities[idx] for idx in feasible_in_cluster ])
-                print(f"Cluster {cid}: {len(feasible_in_cluster)} feasible clients -> U = {U_array}")
+                
                 U_sum   = np.sum(U_array) if np.sum(U_array) > 0 else 1e-12
                 # 2-5) Epsilon-Greedy 선택
                 chosen_indices = []
@@ -405,7 +402,7 @@ if __name__ == "__main__":
             # epsilon decay
             epsilon = max(epsilon_min, epsilon*epsilon_decay)
 
-            print(f"[Round {round+1}] Proposed: {len(selected_clients)} clients selected -> {selected_clients}")
+            # print(f"[Round {round+1}] Proposed: {len(selected_clients)} clients selected -> {selected_clients}")
 
             # >>> 이후 local_train, aggregation 등에 selected_clients 사용
 
@@ -436,8 +433,7 @@ if __name__ == "__main__":
         # 예: param_queue에 model_param, lr, sel_clients=selected_clients 등을 보내고,
         #     result_queues에서 w_locals, loss_locals 수신한 뒤 aggregate
         clients = list(map(int, selected_clients))
-        print(selected_clients)
-        print(clients)
+        
         # assign clients to processes
         assigned_clients = []
         n_assigned_client = J * M // n_processes
@@ -447,7 +443,7 @@ if __name__ == "__main__":
             del clients[:n_assigned_client]
         for i, rest in enumerate(clients):
             assigned_clients[i].append(rest)
-        print(f"Assigned clients: {assigned_clients}")
+        # print(f"Assigned clients: {assigned_clients}")
 
         # start training
         start_time = time.time()
@@ -465,6 +461,7 @@ if __name__ == "__main__":
             loss_locals.extend(result['loss_locals'])
             c_locals.extend(result['c_locals'])
         loss = sum(loss_locals) / len(loss_locals)
+        
         lr *= args.lr_decay ** (round // args.lr_decay_step_size)
         w_glob, c = aggregate(args, w_locals, w_glob, c, c_locals)
         print("Round {:3d} \t Training loss: {:.6f}".format(round + 1, loss), end=', ')
