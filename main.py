@@ -60,7 +60,7 @@ def args_parser():
     # UAV-FL
     parser.add_argument('--uavfl', action='store_true', help='for UAVFL simulation')
     parser.add_argument('--group_ratio', type=float, default=0.95, help="labels ratio for region group")
-    parser.add_argument('--algorithm', type=str, default='selecting', help="algorithm selection (proposed, speed, random, clustering, selecting)")    # 따로 추가 
+    parser.add_argument('--algorithm', type=str, default='all_random', help="algorithm selection (proposed, no_clustering, cluster_random, all_random)")    # 따로 추가 
 
     args = parser.parse_args()
     return args
@@ -198,147 +198,7 @@ if __name__ == "__main__":
     J = 1  # Number of clusters
 
 
-
-
-    if args.algorithm == 'selecting':
-        print("Selecting only!!")
-
-        MIN_BATTERY = 10.0
-        MAX_COMM_TIME = 5.0
-
-        uav_pos = np.array([0.0, 0.0, 100.0])  # (x, y, z)
-        model_param_count = sum(p.numel() for p in global_model.parameters())
-        model_param_size_bits = model_param_count * 32  # float32 => 32 bits
-
-        # 1. Feasibility Check
-        feasible_devices = []
-        for k in range(args.n_clients):
-            battery_ok = iot_devices[k].get_battery() >= MIN_BATTERY
-            comm_ok = iot_devices[k].get_commtime(uav_pos, model_param_size_bits) <= MAX_COMM_TIME
-            if battery_ok and comm_ok:
-                feasible_devices.append(k)
-
-        if len(feasible_devices) == 0:
-            print("No feasible devices found.")
-            sys.exit()
-
-        # print("Feasible Devices")
-        # print(feasible_devices)
-
-
-        # 2. Compute Utility
-        utilities = []
-        for k in feasible_devices:
-            local_indices = list(dict_users[k])
-            local_dataset_k = DataLoader(DatasetSplit(train_dataset, local_indices), batch_size=args.local_bs, shuffle=True)
-            utility = iot_devices[k].compute_pretraining_utility(global_model, local_dataset_k, device=devices[-1])
-            utilities.append((k, utility))  # (device index, utility)
-
-        # # 3. Select Top M Devices Based on Utility
-        # utilities.sort(key=lambda x: x[1], reverse=True)  # Utility 기준 내림차순 정렬
-        # selected_devices = [dev[0] for dev in utilities[:M]]  # 상위 M개 선택
-
-        # print("Selected Devices:")
-        # for count, (index, utility) in enumerate(selected_devices):
-        #     print(f"Count: {count}, Index: {index}, Utility: {utility:.6f}")
-
-        
-        # 3. Sort by Utility and Select Top M Devices
-        utilities.sort(key=lambda x: x[1], reverse=True)  # 내림차순 정렬
-        selected_devices = utilities[:M]  # [(index, utility), ...]
-
-        # 4. Print count, index, utility
-        print("Selected Devices:")
-        for count, (index, utility) in enumerate(selected_devices):
-            print(f"Count: {count}, Index: {index}, Utility: {utility:.6f}")
-
-        sys.exit()
-
-
-    if args.algorithm == 'clustering':
-        print("Clustering Only!!")
-        
-        # proposed 방식으로 동일하게 진행행
-
-        ########################################################################
-        # Example: Pipeline-based clustering by local computation time
-        #
-        # 1) Sort devices by comp_times
-        # 2) Determine number of clusters J from the range of comp_times and tau
-        # 3) Group them in ascending order, ensuring each cluster has at least M devices
-        # 4) Store the result in a dictionary called `clusters`
-        ########################################################################
-
-        # Decide your 'tau' (time slot)
-        # For demonstration, we'll define them as constants below.
-        # Feel free to move them to args_parser() or set them in other ways.
-        tau = 0.0005     # Example: time-slot length (seconds) or your own chosen unit
-
-        # Sort clients by their compute times
-        sorted_indices = np.argsort(comp_times)       # Indices of devices sorted by ascending compute time
-        sorted_times = comp_times[sorted_indices]     # Sorted compute times
-        
-        # Determine number of clusters, J
-        t_min, t_max = np.min(sorted_times), np.max(sorted_times)
-        # Safeguard against division by zero if tau <= 0
-        if tau <= 0:
-            J = 1
-        else:
-            # Example rule: number of clusters ~ (t_max - t_min) / tau
-            J_float = (t_max - t_min) / tau
-            J = int(np.ceil(J_float)) if J_float > 1 else 1
-        
-        print(f"[Pipeline Clustering] Computed number of clusters J = {J} (tau={tau}, M={M})")
-        
-        # Balanced cluster size if you want to keep them roughly uniform
-        # but with an additional constraint that each cluster has at least M devices
-        n_ideal = max(1, args.n_clients // J)
-        
-        ########################################################################
-        # Construct the clusters
-        ########################################################################
-        clusters = {}   # dictionary: cluster_id -> list of device indices
-        current_cluster_id = 0
-        
-        i = 0
-        while i < args.n_clients and current_cluster_id < J:
-            # Start a new cluster
-            clusters[current_cluster_id] = []
-            cluster_size = 0
-            
-            # Fill up to n_ideal
-            while cluster_size < n_ideal and i < args.n_clients:
-                clusters[current_cluster_id].append(sorted_indices[i])
-                i += 1
-                cluster_size += 1
-            
-            # If this new cluster hasn't reached M devices, try adding more
-            while cluster_size < M and i < args.n_clients:
-                clusters[current_cluster_id].append(sorted_indices[i])
-                i += 1
-                cluster_size += 1
-            
-            current_cluster_id += 1
-        
-        # If leftover devices remain, assign them to whichever cluster(s) you like
-        # for balanced distribution or simply to the last cluster:
-        while i < args.n_clients:
-            clusters[current_cluster_id - 1].append(sorted_indices[i])
-            i += 1
-        
-        # Print final clusters
-        for cid, devs in clusters.items():
-            # 각 devs 리스트 내의 np.int64 값을 int로 변환
-            devs_int = [dev.item() for dev in devs]
-            print(f"Cluster {cid}: {len(devs_int)} devices -> {devs_int}")
-
-        sys.exit()
-
-
-
-
-
-    if args.algorithm == 'proposed':
+    if args.algorithm == 'proposed' or 'cluster_random':
         ########################################################################
         # Example: Pipeline-based clustering by local computation time
         #
@@ -549,26 +409,79 @@ if __name__ == "__main__":
 
             # >>> 이후 local_train, aggregation 등에 selected_clients 사용
 
-        elif args.algorithm == 'speed':
-            # Speed Selection 예시:
-            #  - 이미 KMeans 등으로 speed-based cluster를 구했다고 가정
-            #  - 혹은 단순히 comp_times가 작은 순으로 pick
-            #  - 이때도 feasible_clients만 대상으로 함
+    
+        elif args.algorithm == 'no_clustering':
 
-            # 예: comp_times가 작은 순서대로 feasible_clients를 정렬한 뒤 n_clients만큼 뽑기
-            feasible_comp_times = [(k, comp_times[k]) for k in feasible_clients]
-            feasible_comp_times.sort(key=lambda x: x[1])  # ascending
-            selected_clients = [x[0] for x in feasible_comp_times[:M]]
+            if 'epsilon' not in locals():
+                epsilon = 1.0
+            epsilon_min   = 0.1
+            epsilon_decay = 0.95
 
-            print(f"[Round {round+1}] Speed: {len(selected_clients)} clients selected -> {selected_clients}")
+            selected_clients = []
 
-            # >>> 이후 local_train, aggregation 등에 selected_clients 사용
+            U_array = np.array([utilities[idx] for idx in feasible_clients])
+            U_sum = np.sum(U_array) if np.sum(U_array) > 0 else 1e-12
 
-        else:
-            # Random Selection (IID):
-            #  - feasible_clients 중에서 n_clients 뽑기
-            selected_clients = np.random.choice(feasible_clients, size = M, replace=False)
-            print(f"[Round {round+1}] Random: {len(selected_clients)} -> {selected_clients}")
+            # 2-5) Epsilon-Greedy 선택
+            chosen_indices = []
+            if epsilon < np.random.rand():
+                # Randomly select M elements from feasible_clients
+                if len(feasible_clients) >= M:
+                    chosen_indices = np.random.choice(feasible_clients, size=M, replace=False)
+                else:
+                    chosen_indices = feasible_clients
+            else:
+                # U_k가 큰 상위 M개 요소 선택
+                if len(feasible_clients) >= M:
+                    # 유틸리티 배열과 feasible_clients를 함께 정렬
+                    sorted_indices = np.argsort(U_array)[::-1]  # 내림차순 정렬
+                    top_M_indices = sorted_indices[:M]
+                    chosen_indices = [feasible_clients[idx] for idx in top_M_indices]
+                else:
+                    chosen_indices = feasible_clients
+
+            selected_clients.extend(chosen_indices)
+
+            # epsilon decay
+            epsilon = max(epsilon_min, epsilon * epsilon_decay)
+
+            print(f"Selected clients: {selected_clients}")
+
+
+        elif args.algorithm == 'cluster_random':
+            
+            selected_clients = []
+            cluster_ids = clusters.keys()
+
+            for cid in cluster_ids:
+                cluster_indices = clusters[cid]
+                
+                # 클러스터 내에서 feasible_clients와의 교집합 구하기
+                feasible_in_cluster = list(set(cluster_indices).intersection(feasible_clients))
+                if len(feasible_in_cluster) == 0:
+                    print(f"Cluster {cid}: No feasible client. Skipping...")
+                    continue
+        
+                # feasible_in_cluster에서 무작위 M개 선택
+                if len(feasible_in_cluster) >= M:
+                    chosen_indices = np.random.choice(feasible_in_cluster, size=M, replace=False)
+                else:
+                    chosen_indices = feasible_in_cluster
+                
+                selected_clients.extend(chosen_indices)
+
+                # 선택된 클라이언트 출력
+                print(f"Cluster {cid}: Selected clients -> {chosen_indices}")
+
+
+
+        else: # all_random
+            selected_clients = []
+            chosen_indices = np.random.choice(feasible_clients, size=M, replace=False) if len(feasible_clients) >= M else feasible_clients
+            chosen_indices = list(map(int, chosen_indices))
+            selected_clients.extend(chosen_indices)
+            print(f"Selected clients: {selected_clients}")
+
 
         ########################################################################
         # 3) 실제 로컬 훈련, 파라미터 큐 전송, 결과 수신, 모델 집계 등
