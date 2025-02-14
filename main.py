@@ -60,7 +60,7 @@ def args_parser():
     # UAV-FL
     parser.add_argument('--uavfl', action='store_true', help='for UAVFL simulation')
     parser.add_argument('--group_ratio', type=float, default=0.95, help="labels ratio for region group")
-    parser.add_argument('--algorithm', type=str, default='clustering', help="algorithm selection (proposed, speed, random, clustering, selecting)")    # 따로 추가 
+    parser.add_argument('--algorithm', type=str, default='selecting', help="algorithm selection (proposed, speed, random, clustering, selecting)")    # 따로 추가 
 
     args = parser.parse_args()
     return args
@@ -197,6 +197,62 @@ if __name__ == "__main__":
     M = 10 # Number of subchannels
     J = 1  # Number of clusters
 
+
+
+
+    if args.algorithm == 'selecting':
+        print("Selecting only!!")
+
+        MIN_BATTERY = 10.0
+        MAX_COMM_TIME = 5.0
+
+        uav_pos = np.array([0.0, 0.0, 100.0])  # (x, y, z)
+        model_param_count = sum(p.numel() for p in global_model.parameters())
+        model_param_size_bits = model_param_count * 32  # float32 => 32 bits
+
+        # 1. Feasibility Check
+        feasible_devices = []
+        for k in range(args.n_clients):
+            battery_ok = iot_devices[k].get_battery() >= MIN_BATTERY
+            comm_ok = iot_devices[k].get_commtime(uav_pos, model_param_size_bits) <= MAX_COMM_TIME
+            if battery_ok and comm_ok:
+                feasible_devices.append(k)
+
+        if len(feasible_devices) == 0:
+            print("No feasible devices found.")
+            sys.exit()
+
+        # print("Feasible Devices")
+        # print(feasible_devices)
+
+
+        # 2. Compute Utility
+        utilities = []
+        for k in feasible_devices:
+            local_indices = list(dict_users[k])
+            local_dataset_k = DataLoader(DatasetSplit(train_dataset, local_indices), batch_size=args.local_bs, shuffle=True)
+            utility = iot_devices[k].compute_pretraining_utility(global_model, local_dataset_k, device=devices[-1])
+            utilities.append((k, utility))  # (device index, utility)
+
+        # # 3. Select Top M Devices Based on Utility
+        # utilities.sort(key=lambda x: x[1], reverse=True)  # Utility 기준 내림차순 정렬
+        # selected_devices = [dev[0] for dev in utilities[:M]]  # 상위 M개 선택
+
+        # print("Selected Devices:")
+        # for count, (index, utility) in enumerate(selected_devices):
+        #     print(f"Count: {count}, Index: {index}, Utility: {utility:.6f}")
+
+        
+        # 3. Sort by Utility and Select Top M Devices
+        utilities.sort(key=lambda x: x[1], reverse=True)  # 내림차순 정렬
+        selected_devices = utilities[:M]  # [(index, utility), ...]
+
+        # 4. Print count, index, utility
+        print("Selected Devices:")
+        for count, (index, utility) in enumerate(selected_devices):
+            print(f"Count: {count}, Index: {index}, Utility: {utility:.6f}")
+
+        sys.exit()
 
 
     if args.algorithm == 'clustering':
