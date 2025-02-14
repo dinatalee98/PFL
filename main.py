@@ -389,7 +389,7 @@ if __name__ == "__main__":
                     if len(feasible_in_cluster) >= M:
                         chosen_indices = np.random.choice(feasible_in_cluster, size=M, replace=False)
                     else:
-                        chosen_indices = feasible_in_cluster
+                        chosen_indices = np.array(feasible_in_cluster)
                 else:
                     # U_k가 큰 상위 M개 요소 선택
                     if len(feasible_in_cluster) >= M:
@@ -398,7 +398,7 @@ if __name__ == "__main__":
                         top_M_indices = sorted_indices[:M]
                         chosen_indices = [feasible_in_cluster[idx] for idx in top_M_indices]
                     else:
-                        chosen_indices = feasible_in_cluster
+                        chosen_indices = np.array(feasible_in_cluster)
 
                 selected_clients.extend(chosen_indices)
 
@@ -429,7 +429,7 @@ if __name__ == "__main__":
                 if len(feasible_clients) >= M:
                     chosen_indices = np.random.choice(feasible_clients, size=M, replace=False)
                 else:
-                    chosen_indices = feasible_clients
+                    chosen_indices = np.array(feasible_clients)
             else:
                 # U_k가 큰 상위 M개 요소 선택
                 if len(feasible_clients) >= M:
@@ -438,7 +438,7 @@ if __name__ == "__main__":
                     top_M_indices = sorted_indices[:M]
                     chosen_indices = [feasible_clients[idx] for idx in top_M_indices]
                 else:
-                    chosen_indices = feasible_clients
+                    chosen_indices = np.array(feasible_clients)
 
             selected_clients.extend(chosen_indices)
 
@@ -466,19 +466,19 @@ if __name__ == "__main__":
                 if len(feasible_in_cluster) >= M:
                     chosen_indices = np.random.choice(feasible_in_cluster, size=M, replace=False)
                 else:
-                    chosen_indices = feasible_in_cluster
+                    chosen_indices = np.array(feasible_in_cluster)
                 
                 selected_clients.extend(chosen_indices)
 
                 # 선택된 클라이언트 출력
-                print(f"Cluster {cid}: Selected clients -> {chosen_indices}")
+                print(f"Cluster {cid}: Selected clients -> {selected_clients}")
 
 
 
         else: # fedavg
             selected_clients = []
             chosen_indices = np.random.choice(feasible_clients, size=M, replace=False) if len(feasible_clients) >= M else feasible_clients
-            chosen_indices = list(map(int, chosen_indices))
+            # chosen_indices = list(map(int, chosen_indices))
             selected_clients.extend(chosen_indices)
             print(f"Selected clients: {selected_clients}")
 
