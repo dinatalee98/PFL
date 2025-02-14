@@ -18,6 +18,8 @@ from iot_device import IoTDevice
 from sklearn.cluster import DBSCAN, KMeans
 from collections import defaultdict, Counter
 
+import sys
+
 
 def args_parser():
     parser = argparse.ArgumentParser()
@@ -58,7 +60,7 @@ def args_parser():
     # UAV-FL
     parser.add_argument('--uavfl', action='store_true', help='for UAVFL simulation')
     parser.add_argument('--group_ratio', type=float, default=0.95, help="labels ratio for region group")
-    parser.add_argument('--algorithm', type=str, default='proposed', help="algorithm selection (proposed, speed, random)")
+    parser.add_argument('--algorithm', type=str, default='clustering', help="algorithm selection (proposed, speed, random, clustering, selecting)")    # 따로 추가 
 
     args = parser.parse_args()
     return args
@@ -194,6 +196,91 @@ if __name__ == "__main__":
 
     M = 10 # Number of subchannels
     J = 1  # Number of clusters
+
+
+
+    if args.algorithm == 'clustering':
+        print("Clustering Only!!")
+        
+        # proposed 방식으로 동일하게 진행행
+
+        ########################################################################
+        # Example: Pipeline-based clustering by local computation time
+        #
+        # 1) Sort devices by comp_times
+        # 2) Determine number of clusters J from the range of comp_times and tau
+        # 3) Group them in ascending order, ensuring each cluster has at least M devices
+        # 4) Store the result in a dictionary called `clusters`
+        ########################################################################
+
+        # Decide your 'tau' (time slot)
+        # For demonstration, we'll define them as constants below.
+        # Feel free to move them to args_parser() or set them in other ways.
+        tau = 0.0005     # Example: time-slot length (seconds) or your own chosen unit
+
+        # Sort clients by their compute times
+        sorted_indices = np.argsort(comp_times)       # Indices of devices sorted by ascending compute time
+        sorted_times = comp_times[sorted_indices]     # Sorted compute times
+        
+        # Determine number of clusters, J
+        t_min, t_max = np.min(sorted_times), np.max(sorted_times)
+        # Safeguard against division by zero if tau <= 0
+        if tau <= 0:
+            J = 1
+        else:
+            # Example rule: number of clusters ~ (t_max - t_min) / tau
+            J_float = (t_max - t_min) / tau
+            J = int(np.ceil(J_float)) if J_float > 1 else 1
+        
+        print(f"[Pipeline Clustering] Computed number of clusters J = {J} (tau={tau}, M={M})")
+        
+        # Balanced cluster size if you want to keep them roughly uniform
+        # but with an additional constraint that each cluster has at least M devices
+        n_ideal = max(1, args.n_clients // J)
+        
+        ########################################################################
+        # Construct the clusters
+        ########################################################################
+        clusters = {}   # dictionary: cluster_id -> list of device indices
+        current_cluster_id = 0
+        
+        i = 0
+        while i < args.n_clients and current_cluster_id < J:
+            # Start a new cluster
+            clusters[current_cluster_id] = []
+            cluster_size = 0
+            
+            # Fill up to n_ideal
+            while cluster_size < n_ideal and i < args.n_clients:
+                clusters[current_cluster_id].append(sorted_indices[i])
+                i += 1
+                cluster_size += 1
+            
+            # If this new cluster hasn't reached M devices, try adding more
+            while cluster_size < M and i < args.n_clients:
+                clusters[current_cluster_id].append(sorted_indices[i])
+                i += 1
+                cluster_size += 1
+            
+            current_cluster_id += 1
+        
+        # If leftover devices remain, assign them to whichever cluster(s) you like
+        # for balanced distribution or simply to the last cluster:
+        while i < args.n_clients:
+            clusters[current_cluster_id - 1].append(sorted_indices[i])
+            i += 1
+        
+        # Print final clusters
+        for cid, devs in clusters.items():
+            # 각 devs 리스트 내의 np.int64 값을 int로 변환
+            devs_int = [dev.item() for dev in devs]
+            print(f"Cluster {cid}: {len(devs_int)} devices -> {devs_int}")
+
+        sys.exit()
+
+
+
+
 
     if args.algorithm == 'proposed':
         ########################################################################
