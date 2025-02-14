@@ -60,7 +60,7 @@ def args_parser():
     # UAV-FL
     parser.add_argument('--uavfl', action='store_true', help='for UAVFL simulation')
     parser.add_argument('--group_ratio', type=float, default=0.95, help="labels ratio for region group")
-    parser.add_argument('--algorithm', type=str, default='all_random', help="algorithm selection (proposed, no_clustering, cluster_random, all_random)")    # 따로 추가 
+    parser.add_argument('--algorithm', type=str, default='proposed', help="algorithm selection (proposed, client_selection, pipeline, fedavg)")    # 따로 추가 
 
     args = parser.parse_args()
     return args
@@ -198,7 +198,7 @@ if __name__ == "__main__":
     J = 1  # Number of clusters
 
 
-    if args.algorithm == 'proposed' or 'cluster_random':
+    if args.algorithm == 'proposed' or  'pipeline':
         ########################################################################
         # Example: Pipeline-based clustering by local computation time
         #
@@ -405,12 +405,12 @@ if __name__ == "__main__":
             # epsilon decay
             epsilon = max(epsilon_min, epsilon*epsilon_decay)
 
-            # print(f"[Round {round+1}] Proposed: {len(selected_clients)} clients selected -> {selected_clients}")
+            print(f"[Round {round+1}] Proposed: {len(selected_clients)} clients selected -> {selected_clients}")
 
             # >>> 이후 local_train, aggregation 등에 selected_clients 사용
 
     
-        elif args.algorithm == 'no_clustering':
+        elif args.algorithm == 'client_selection':
 
             if 'epsilon' not in locals():
                 epsilon = 1.0
@@ -448,7 +448,7 @@ if __name__ == "__main__":
             print(f"Selected clients: {selected_clients}")
 
 
-        elif args.algorithm == 'cluster_random':
+        elif args.algorithm ==  'pipeline':
             
             selected_clients = []
             cluster_ids = clusters.keys()
@@ -475,7 +475,7 @@ if __name__ == "__main__":
 
 
 
-        else: # all_random
+        else: # fedavg
             selected_clients = []
             chosen_indices = np.random.choice(feasible_clients, size=M, replace=False) if len(feasible_clients) >= M else feasible_clients
             chosen_indices = list(map(int, chosen_indices))
