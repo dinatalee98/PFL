@@ -129,27 +129,27 @@ class IoTDevice:
         snr = p_k * h_lin / sigma2
         return b_k * math.log2(1.0 + snr)
     
-    def get_commtime(self, uav_pos, data_size_bits):
+    def get_commtime(self, uav_pos, data_size_bits, M):
         """
         t_k^{comm} = data_size_bits / R_k
         if R_k is in bits/s
         """
         device_pos = self.get_location()
-        b_k = 80e3  # 80 KHz bandwidth
+        b_k = 10e6 / M # 10 MHz bandwidth
         p_k = self.comm_power
         R_k = self.achievable_rate(uav_pos, device_pos, p_k, b_k)
         if R_k < 1e-12:
             return 1e9  # effectively infinite time
         return data_size_bits / R_k
     
-    def comm_energy(self, uav_pos, data_size_bits):
+    def get_comm_energy(self, uav_pos, data_size_bits, M):
         """
         E_k^{comm} = p_k * t_k^{comm}, ignoring the formula for power control from the text
         for brevity. If you want the exact formula from the text:
         E_k^{comm} = (t^{comm}_k * sigma^2 / |h_k|^2 ) * (2^( (a_k*s)/(b_k*t^{comm}_k )) - 1)
         This code uses a simpler approach: E = P * time. Replace as needed.
         """
-        t_comm = self.get_commtime(uav_pos, data_size_bits)
+        t_comm = self.get_commtime(uav_pos, data_size_bits, M)
         p_k = self.comm_power
         return p_k * t_comm
 
@@ -161,7 +161,8 @@ class IoTDevice:
         c_k = 10              # cycles per sample
         f_k = 5e9             # CPU frequency (Hz)
         alpha_k = 1e-28       # effective capacitance coefficient * 2 (splitting the factor in the code)
-        return (alpha_k * c_k * self.D_k * (f_k**2)) / 2.0
+        data_size_per_sample = 28 * 28
+        return (alpha_k * c_k * self.num_of_data * data_size_per_sample * (f_k**2)) / 2.0
     
 
 
