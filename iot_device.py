@@ -142,13 +142,17 @@ class IoTDevice:
             return 1e9  # effectively infinite time
         return data_size_bits / R_k
     
-    def get_comm_energy(self, uav_pos, data_size_bits, M):
+    def get_comm_energy(self, uav_pos, M):
         """
         E_k^{comm} = p_k * t_k^{comm}, ignoring the formula for power control from the text
         for brevity. If you want the exact formula from the text:
         E_k^{comm} = (t^{comm}_k * sigma^2 / |h_k|^2 ) * (2^( (a_k*s)/(b_k*t^{comm}_k )) - 1)
         This code uses a simpler approach: E = P * time. Replace as needed.
         """
+
+        data_size_per_sample = 28 * 28
+        data_size_bits = self.num_of_data * data_size_per_sample  # get_computation_time 에서랑 일단 같은 식 썼음음
+
         t_comm = self.get_commtime(uav_pos, data_size_bits, M)
         p_k = self.comm_power
         return p_k * t_comm

@@ -60,7 +60,7 @@ def args_parser():
     # UAV-FL
     parser.add_argument('--uavfl', action='store_true', help='for UAVFL simulation')
     parser.add_argument('--group_ratio', type=float, default=0.95, help="labels ratio for region group")
-    parser.add_argument('--algorithm', type=str, default='proposed', help="algorithm selection (proposed, client_selection, pipeline, fedavg)")    # 따로 추가 
+    parser.add_argument('--algorithm', type=str, default='fedavg', help="algorithm selection (proposed, client_selection, pipeline, fedavg)")    # 따로 추가 
 
     args = parser.parse_args()
     return args
@@ -329,7 +329,7 @@ if __name__ == "__main__":
 
         for k in range(args.n_clients):
             battery_ok = (iot_devices[k].get_battery() >= MIN_BATTERY)   # 예: 배터리 임계값
-            comm_ok    = (iot_devices[k].get_commtime(uav_pos, model_param_size_bits)  <= MAX_COMM_TIME)  # 예: 통신시간 임계값
+            comm_ok    = (iot_devices[k].get_commtime(uav_pos, model_param_size_bits, M)  <= MAX_COMM_TIME)  # 예: 통신시간 임계값
             if battery_ok and comm_ok:
                 feasible_clients.append(k)
 
@@ -489,6 +489,26 @@ if __name__ == "__main__":
         # 예: param_queue에 model_param, lr, sel_clients=selected_clients 등을 보내고,
         #     result_queues에서 w_locals, loss_locals 수신한 뒤 aggregate
         clients = list(map(int, selected_clients))
+
+        for idx, device in enumerate(iot_devices):
+            if idx in clients:  # 선택된 클라이언트인지 확인
+                print("이전")
+                print(device.battery)
+                comm_energy = device.get_comm_energy(uav_pos, M)
+                comp_energy = device.get_comp_energy()
+                print(comm_energy)
+                print(comp_energy)
+                
+                device.battery -= (comm_energy + comp_energy)  # 배터리 값 갱신
+                
+                # 배터리가 0 이하로 떨어지는 경우 방지
+                if device.battery < 0:
+                    device.battery = 0
+                
+                print("이후")
+                print(device.battery)
+
+
         
         # assign clients to processes
         assigned_clients = []
