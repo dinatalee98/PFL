@@ -151,6 +151,11 @@ if __name__ == "__main__":
         n_devices = min(torch.cuda.device_count(), args.n_gpu)
         devices = [torch.device("cuda:{}".format(i)) for i in range(n_devices)]
         cuda = True
+    elif torch.backends.mps.is_available():
+        n_devices = 1  # MPS는 단일 GPU만 지원
+        devices = [torch.device("mps")]
+        cuda = False
+        print("Using MPS (Apple GPU)")
     else:
         n_devices = 1
         devices = [torch.device('cpu')]
@@ -189,7 +194,7 @@ if __name__ == "__main__":
     region_data = np.vstack((region1, region2, region3))
 
     # iot_devices = [IoTDevice(x, y, dataset_size, battery, dataset)]
-    iot_devices = [IoTDevice(x, y, len(dict_users[k]), np.random.uniform(10, 20, 1), args.dataset) for k, (x, y) in enumerate(region_data)]
+    iot_devices = [IoTDevice(x, y, len(dict_users[k]), np.random.uniform(30, 50, 1), args.dataset) for k, (x, y) in enumerate(region_data)]
 
     comp_times = np.array([device.get_computation_time() for device in iot_devices]).flatten()
 
@@ -296,7 +301,7 @@ if __name__ == "__main__":
     # Client selection
     ########################################################################
 
-    MIN_BATTERY = 10.0
+    MIN_BATTERY = 1.0
     MAX_COMM_TIME = 500.0
 
     uav_pos = np.array([0.0, 0.0, 100.0])  # (x, y, z)
@@ -406,7 +411,8 @@ if __name__ == "__main__":
                 selected_clients.extend(chosen_indices)
 
             # epsilon decay
-            epsilon = max(epsilon_min, epsilon*epsilon_decay)
+            if round % 10 == 0:
+                epsilon = max(epsilon_min, epsilon*epsilon_decay)
 
             print(f"[Round {round+1}] Proposed: {len(selected_clients)} clients selected -> {selected_clients}")
 
@@ -446,7 +452,8 @@ if __name__ == "__main__":
             selected_clients.extend(chosen_indices)
 
             # epsilon decay
-            epsilon = max(epsilon_min, epsilon * epsilon_decay)
+            if round % 10 == 0:
+                epsilon = max(epsilon_min, epsilon * epsilon_decay)
 
             print(f"Selected clients: {selected_clients}")
 
@@ -495,21 +502,10 @@ if __name__ == "__main__":
 
         for idx, device in enumerate(iot_devices):
             if idx in clients:  # 선택된 클라이언트인지 확인
-                print("이전")
-                print(device.battery)
                 comm_energy = device.get_comm_energy(device.get_commtime(uav_pos, model_param_size_bits, M))
                 comp_energy = device.get_comp_energy()
-                print(comm_energy)
-                print(comp_energy)
                 
                 device.battery -= (comm_energy + comp_energy)  # 배터리 값 갱신
-                
-                # 배터리가 0 이하로 떨어지는 경우 방지
-                if device.battery < 0:
-                    device.battery = 0
-                
-                print("이후")
-                print(device.battery)
 
 
         
@@ -569,4 +565,4 @@ if __name__ == "__main__":
 
     # record test accuracies
     if not args.no_record:
-        np.savetxt(f"./result/{args.algorithm}_{args.n_clients}_{args.frac}.csv", test_accs, delimiter=",")
+        np.savetxt(f"./result/{args.algorithm}_{args.n_clients}.csv", test_accs, delimiter=",")
