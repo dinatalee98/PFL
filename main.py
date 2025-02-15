@@ -188,13 +188,14 @@ if __name__ == "__main__":
     region3 = np.random.uniform(40, 50, (args.n_clients-3*unit_num, 2))
     region_data = np.vstack((region1, region2, region3))
 
-    iot_devices = [IoTDevice(x, y, len(dict_users[k]), np.random.uniform(1, 30, 1), args.dataset) for k, (x, y) in enumerate(region_data)]
+    # iot_devices = [IoTDevice(x, y, dataset_size, battery, dataset)]
+    iot_devices = [IoTDevice(x, y, len(dict_users[k]), np.random.uniform(10, 20, 1), args.dataset) for k, (x, y) in enumerate(region_data)]
 
     comp_times = np.array([device.get_computation_time() for device in iot_devices]).flatten()
 
     #print(f"Computation times: {comp_times}")
 
-    M = 10 # Number of subchannels
+    M = 5 # Number of subchannels
     J = 1  # Number of clusters
 
 
@@ -211,7 +212,7 @@ if __name__ == "__main__":
         # Decide your 'tau' (time slot)
         # For demonstration, we'll define them as constants below.
         # Feel free to move them to args_parser() or set them in other ways.
-        tau = 0.0005     # Example: time-slot length (seconds) or your own chosen unit
+        tau = 3.0     # Example: time-slot length (seconds) or your own chosen unit
 
         # Sort clients by their compute times
         sorted_indices = np.argsort(comp_times)       # Indices of devices sorted by ascending compute time
@@ -296,7 +297,7 @@ if __name__ == "__main__":
     ########################################################################
 
     MIN_BATTERY = 10.0
-    MAX_COMM_TIME = 5.0
+    MAX_COMM_TIME = 500.0
 
     uav_pos = np.array([0.0, 0.0, 100.0])  # (x, y, z)
 
@@ -332,6 +333,8 @@ if __name__ == "__main__":
             comm_ok    = (iot_devices[k].get_commtime(uav_pos, model_param_size_bits, M)  <= MAX_COMM_TIME)  # 예: 통신시간 임계값
             if battery_ok and comm_ok:
                 feasible_clients.append(k)
+                #print(iot_devices[k].get_comm_energy(uav_pos, model_param_size_bits, M))  # 통신 에너지 소모량
+                #print(iot_devices[k].get_comp_energy())  # 연산 에너지 소모량
 
         # print(f"[Round {round+1}] {len(feasible_clients)} feasible clients -> {feasible_clients}")
         # 만약 하나도 feasible 하지 않다면, 이번 라운드는 그냥 건너뛴다거나 하는 처리
@@ -494,7 +497,7 @@ if __name__ == "__main__":
             if idx in clients:  # 선택된 클라이언트인지 확인
                 print("이전")
                 print(device.battery)
-                comm_energy = device.get_comm_energy(uav_pos, M)
+                comm_energy = device.get_comm_energy(device.get_commtime(uav_pos, model_param_size_bits, M))
                 comp_energy = device.get_comp_energy()
                 print(comm_energy)
                 print(comp_energy)

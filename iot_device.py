@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
-class IoTDevice:
+class IoTDevice:    
     def __init__(self, x, y, D_k, b, dataset):
         self.x = x
         self.y = y
@@ -13,18 +13,15 @@ class IoTDevice:
         self.battery = b
         self.comm_power = 10  #10 ~ 30 dBm
         self.dataset = dataset
+        self.c_k = 1e7             # cycles per sample
+        self.f_k = 1e9            # CPU frequency (Hz)
     
     def get_location(self):
         return np.array([self.x, self.y])
     
     def get_computation_time(self): # Eq 3 & 4
-        c_k = 10              # cycles per sample
-        f_k = 5e9             # CPU frequency (Hz)
-        data_size_per_sample = 28 * 28
-        if self.dataset == "mnist":
-            data_size_per_sample = 28 * 28
-        D_k = self.num_of_data * data_size_per_sample   # data size in bits
-        t_comp = (c_k * D_k) / f_k
+        D_k = self.num_of_data  # data size in bits
+        t_comp = (self.c_k * D_k) / self.f_k
         return t_comp
     
     def get_battery(self):
@@ -135,25 +132,20 @@ class IoTDevice:
         if R_k is in bits/s
         """
         device_pos = self.get_location()
-        b_k = 10e6 / M # 10 MHz bandwidth
+        b_k = 50e6 / M # 10 MHz bandwidth
         p_k = self.comm_power
         R_k = self.achievable_rate(uav_pos, device_pos, p_k, b_k)
         if R_k < 1e-12:
             return 1e9  # effectively infinite time
         return data_size_bits / R_k
     
-    def get_comm_energy(self, uav_pos, M):
+    def get_comm_energy(self, t_comm):
         """
         E_k^{comm} = p_k * t_k^{comm}, ignoring the formula for power control from the text
         for brevity. If you want the exact formula from the text:
         E_k^{comm} = (t^{comm}_k * sigma^2 / |h_k|^2 ) * (2^( (a_k*s)/(b_k*t^{comm}_k )) - 1)
         This code uses a simpler approach: E = P * time. Replace as needed.
         """
-
-        data_size_per_sample = 28 * 28
-        data_size_bits = self.num_of_data * data_size_per_sample  # get_computation_time 에서랑 일단 같은 식 썼음음
-
-        t_comm = self.get_commtime(uav_pos, data_size_bits, M)
         p_k = self.comm_power
         return p_k * t_comm
 
@@ -162,11 +154,8 @@ class IoTDevice:
         E_k^{comp} = a_k * alpha_k/2 * c_k * D_k * f_k^2
         For simplicity, assume a_k=1 always if computing. We incorporate alpha_k/2 in code directly.
         """
-        c_k = 10              # cycles per sample
-        f_k = 5e9             # CPU frequency (Hz)
         alpha_k = 1e-28       # effective capacitance coefficient * 2 (splitting the factor in the code)
-        data_size_per_sample = 28 * 28
-        return (alpha_k * c_k * self.num_of_data * data_size_per_sample * (f_k**2)) / 2.0
+        return (alpha_k * self.c_k * self.num_of_data * (self.f_k**2)) / 2.0
     
 
 
