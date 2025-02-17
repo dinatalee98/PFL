@@ -187,11 +187,12 @@ if __name__ == "__main__":
 
     # print(dict_users[0])
     # set iot devices
-    unit_num = int(args.n_clients/4)
-    region1 = np.random.uniform(0, 10, (2*unit_num, 2))
-    region2 = np.random.uniform(20, 30, (unit_num, 2))
-    region3 = np.random.uniform(40, 50, (args.n_clients-3*unit_num, 2))
-    region_data = np.vstack((region1, region2, region3))
+    unit_num = int(args.n_clients/5)
+    region1 = np.random.uniform(50, 150, (2*unit_num, 2))
+    region2 = np.random.uniform(250, 350, (3*unit_num, 2))
+    #region3 = np.random.uniform(40, 50, (args.n_clients-3*unit_num, 2))
+    #region_data = np.vstack((region1, region2, region3))
+    region_data = np.vstack((region1, region2))
 
     # iot_devices = [IoTDevice(x, y, dataset_size, battery, dataset)]
     iot_devices = [IoTDevice(x, y, len(dict_users[k]), np.random.uniform(30, 50, 1), args.dataset) for k, (x, y) in enumerate(region_data)]
@@ -302,9 +303,9 @@ if __name__ == "__main__":
     ########################################################################
 
     MIN_BATTERY = 1.0
-    MAX_COMM_TIME = 500.0
+    MAX_COMM_TIME = 0.006
 
-    uav_pos = np.array([0.0, 0.0, 100.0])  # (x, y, z)
+    uav_pos = np.array([200.0, 0.0, 100.0])  # (x, y, z)
 
     for round in range(args.epochs):
         ########################################################################
@@ -332,10 +333,12 @@ if __name__ == "__main__":
         # Example: compute model parameter size (in bits)
         model_param_count = sum(p.numel() for p in global_model.parameters())
         model_param_size_bits = model_param_count * 32  # float32 => 32 bits
-
         for k in range(args.n_clients):
             battery_ok = (iot_devices[k].get_battery() >= MIN_BATTERY)   # 예: 배터리 임계값
             comm_ok    = (iot_devices[k].get_commtime(uav_pos, model_param_size_bits, M)  <= MAX_COMM_TIME)  # 예: 통신시간 임계값
+            distance = np.linalg.norm(iot_devices[k].get_location() - uav_pos[:2])
+            print(iot_devices[k].get_commtime(uav_pos, model_param_size_bits, M), distance)
+            
             if battery_ok and comm_ok:
                 feasible_clients.append(k)
                 #print(iot_devices[k].get_comm_energy(uav_pos, model_param_size_bits, M))  # 통신 에너지 소모량
