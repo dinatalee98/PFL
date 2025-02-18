@@ -25,7 +25,7 @@ def args_parser():
     parser = argparse.ArgumentParser()
     # federated learning arguments
     parser.add_argument('--epochs', type=int, default=300, help="rounds of training")
-    parser.add_argument('--n_clients', type=int, default=100, help="number of users: K")
+    parser.add_argument('--n_clients', type=int, default=40, help="number of users: K")
     parser.add_argument('--frac', type=float, default=1.0, help="the fraction of clients: C")
     parser.add_argument('--local_ep', type=int, default=5, help="the number of local epochs: E")
     parser.add_argument('--local_bs', type=int, default=100, help="local batch size: B")
@@ -61,7 +61,7 @@ def args_parser():
     parser.add_argument('--uavfl', action='store_true', help='for UAVFL simulation')
     parser.add_argument('--group_ratio', type=float, default=0.95, help="labels ratio for region group")
     parser.add_argument('--algorithm', type=str, default='fedavg', help="algorithm selection (proposed, client_selection, pipeline, fedavg)")    # 따로 추가 
-
+    parser.add_argument('--subchannels', type=int, default=3, help='number of subchannels')
     args = parser.parse_args()
     return args
 
@@ -151,6 +151,7 @@ if __name__ == "__main__":
         n_devices = min(torch.cuda.device_count(), args.n_gpu)
         devices = [torch.device("cuda:{}".format(i)) for i in range(n_devices)]
         cuda = True
+        print("Using GPU")
     elif torch.backends.mps.is_available():
         n_devices = 1  # MPS는 단일 GPU만 지원
         devices = [torch.device("mps")]
@@ -188,6 +189,7 @@ if __name__ == "__main__":
     # print(dict_users[0])
     # set iot devices
     unit_num = int(args.n_clients/5)
+    
     region1 = np.random.uniform(50, 150, (2*unit_num, 2))
     region2 = np.random.uniform(250, 350, (3*unit_num, 2))
     #region3 = np.random.uniform(40, 50, (args.n_clients-3*unit_num, 2))
@@ -195,13 +197,13 @@ if __name__ == "__main__":
     region_data = np.vstack((region1, region2))
 
     # iot_devices = [IoTDevice(x, y, dataset_size, battery, dataset)]
-    iot_devices = [IoTDevice(x, y, len(dict_users[k]), np.random.uniform(30, 50, 1), args.dataset) for k, (x, y) in enumerate(region_data)]
+    iot_devices = [IoTDevice(x, y, len(dict_users[k]), np.random.uniform(100, 150, 1), args.dataset) for k, (x, y) in enumerate(region_data)]
 
     comp_times = np.array([device.get_computation_time() for device in iot_devices]).flatten()
+    
+    print(f"Computation times: {comp_times}")
 
-    #print(f"Computation times: {comp_times}")
-
-    M = 5 # Number of subchannels
+    M = args.subchannels # Number of subchannels
     J = 1  # Number of clusters
 
 
@@ -218,7 +220,7 @@ if __name__ == "__main__":
         # Decide your 'tau' (time slot)
         # For demonstration, we'll define them as constants below.
         # Feel free to move them to args_parser() or set them in other ways.
-        tau = 3.0     # Example: time-slot length (seconds) or your own chosen unit
+        tau = 12.0     # Example: time-slot length (seconds) or your own chosen unit
 
         # Sort clients by their compute times
         sorted_indices = np.argsort(comp_times)       # Indices of devices sorted by ascending compute time
@@ -305,9 +307,25 @@ if __name__ == "__main__":
     MIN_BATTERY = 1.0
     MAX_COMM_TIME = 0.006
 
+    # Define waypoints
+    waypoints = np.array([[100.0, 100.0, 100.0], [300.0, 300.0, 100.0]])
     uav_pos = np.array([200.0, 0.0, 100.0])  # (x, y, z)
+    
 
     for round in range(args.epochs):
+        #100, 100, 300, 300
+        #uav_pos
+        if round % 2 == 0:
+            uav_pos = waypoints[0]
+        elif round % 2 == 1:
+            uav_pos = waypoints[1]
+        else:
+            # Move UAV gradually from start to end position in one round
+            t = (round % 2) / 2.0  # Full transition in 1 round
+            uav_pos = (1 - t) * waypoints[0] + t * waypoints[1]
+        
+        # print(f"Round {round+1}: UAV Position: {uav_pos}")
+
         ########################################################################
         # 1) 각 클라이언트별 "현재 글로벌 모델 기준" 유틸리티 계산
         ########################################################################
@@ -337,7 +355,8 @@ if __name__ == "__main__":
             battery_ok = (iot_devices[k].get_battery() >= MIN_BATTERY)   # 예: 배터리 임계값
             comm_ok    = (iot_devices[k].get_commtime(uav_pos, model_param_size_bits, M)  <= MAX_COMM_TIME)  # 예: 통신시간 임계값
             distance = np.linalg.norm(iot_devices[k].get_location() - uav_pos[:2])
-            print(iot_devices[k].get_commtime(uav_pos, model_param_size_bits, M), distance)
+            comm_ok = (distance < 70)
+            # print(iot_devices[k].get_commtime(uav_pos, model_param_size_bits, M), distance)
             
             if battery_ok and comm_ok:
                 feasible_clients.append(k)
@@ -484,7 +503,7 @@ if __name__ == "__main__":
                 selected_clients.extend(chosen_indices)
 
                 # 선택된 클라이언트 출력
-                print(f"Cluster {cid}: Selected clients -> {selected_clients}")
+            print(f"Cluster {cid}: Selected clients -> {selected_clients}")
 
 
 
@@ -568,4 +587,4 @@ if __name__ == "__main__":
 
     # record test accuracies
     if not args.no_record:
-        np.savetxt(f"./result/{args.algorithm}_{args.n_clients}.csv", test_accs, delimiter=",")
+        np.savetxt(f"./result/{args.algorithm}_{args.n_clients}_{args.subchannels}.csv", test_accs, delimiter=",")
