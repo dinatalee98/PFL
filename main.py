@@ -30,7 +30,7 @@ def args_parser():
     parser.add_argument('--local_ep', type=int, default=5, help="the number of local epochs: E")
     parser.add_argument('--local_bs', type=int, default=100, help="local batch size: B")
     parser.add_argument('--test_bs', type=int, default=128, help="test batch size")
-    parser.add_argument('--lr', type=float, default=0.01, help="learning rate")
+    parser.add_argument('--lr', type=float, default=0.005, help="learning rate")
     parser.add_argument('--lr_decay', type=float, default=0.9, help="learning rate decay")
     parser.add_argument('--lr_decay_step_size', type=int, default=500, help="step size to decay learning rate")
 
@@ -187,18 +187,35 @@ if __name__ == "__main__":
 
     # print(dict_users[0])
     # set iot devices
-    unit_num = int(args.n_clients/5)
-    region1 = np.random.uniform(50, 150, (2*unit_num, 2))
-    region2 = np.random.uniform(250, 350, (3*unit_num, 2))
+    #unit_num = int(args.n_clients/5)
+    #region1 = np.random.uniform(50, 150, (2*unit_num, 2))
+    #region2 = np.random.uniform(250, 350, (3*unit_num, 2))
     #region3 = np.random.uniform(40, 50, (args.n_clients-3*unit_num, 2))
     #region_data = np.vstack((region1, region2, region3))
-    region_data = np.vstack((region1, region2))
+    #region_data = np.vstack((region1, region2))
+    # 세 개의 중심점 정의
+    centers = np.array([[200, 600], [500, 200], [800, 800]])
+
+    # 각 중심점 주변에 클라이언트들을 무작위로 배치
+    num_of_centers = len(centers)
+    clients_per_center = args.n_clients // num_of_centers
+    remaining_clients = args.n_clients % num_of_centers
+
+    region_data = np.vstack([
+        np.random.normal(loc=center, scale=50, size=(clients_per_center, 2))
+        for center in centers
+    ])
+
+    # 나머지 클라이언트를 첫 번째 중심점에 추가
+    if remaining_clients > 0:
+        additional_clients = np.random.normal(loc=centers[0], scale=50, size=(remaining_clients, 2))
+        region_data = np.vstack([region_data, additional_clients])
 
     # iot_devices = [IoTDevice(x, y, dataset_size, battery, dataset)]
-    iot_devices = [IoTDevice(x, y, len(dict_users[k]), np.random.uniform(30, 50, 1), args.dataset) for k, (x, y) in enumerate(region_data)]
+    iot_devices = [IoTDevice(x, y, len(dict_users[k]), np.random.uniform(100, 150, 1), args.dataset) for k, (x, y) in enumerate(region_data)]
 
     comp_times = np.array([device.get_computation_time() for device in iot_devices]).flatten()
-
+    print(np.std(comp_times))
     #print(f"Computation times: {comp_times}")
 
     M = 5 # Number of subchannels
@@ -218,12 +235,11 @@ if __name__ == "__main__":
         # Decide your 'tau' (time slot)
         # For demonstration, we'll define them as constants below.
         # Feel free to move them to args_parser() or set them in other ways.
-        tau = 3.0     # Example: time-slot length (seconds) or your own chosen unit
+        tau = np.std(comp_times)    # Example: time-slot length (seconds) or your own chosen unit
 
         # Sort clients by their compute times
         sorted_indices = np.argsort(comp_times)       # Indices of devices sorted by ascending compute time
         sorted_times = comp_times[sorted_indices]     # Sorted compute times
-        
         # Determine number of clusters, J
         t_min, t_max = np.min(sorted_times), np.max(sorted_times)
         # Safeguard against division by zero if tau <= 0
@@ -304,10 +320,17 @@ if __name__ == "__main__":
 
     MIN_BATTERY = 1.0
     MAX_COMM_TIME = 0.006
-
+    waypoints = np.array([[200, 600, 100], [500, 200, 100], [800, 800, 100]])
     uav_pos = np.array([200.0, 0.0, 100.0])  # (x, y, z)
 
+
     for round in range(args.epochs):
+        if round % 3 == 0:
+            uav_pos = waypoints[0]
+        elif round % 3 == 1:
+            uav_pos = waypoints[1]
+        elif round % 3 == 2:
+            uav_pos = waypoints[2]
         ########################################################################
         # 1) 각 클라이언트별 "현재 글로벌 모델 기준" 유틸리티 계산
         ########################################################################
@@ -315,6 +338,7 @@ if __name__ == "__main__":
         #  - compute_pretraining_utility(...) 호출
         #  - 결과를 배열 or dict에 저장
         ########################################################################
+
         utilities = [0.0] * args.n_clients
         global_model.load_state_dict(w_glob)   # 직전 라운드까지 집계된 글로벌 모델
         for k in range(args.n_clients):
@@ -337,8 +361,7 @@ if __name__ == "__main__":
             battery_ok = (iot_devices[k].get_battery() >= MIN_BATTERY)   # 예: 배터리 임계값
             comm_ok    = (iot_devices[k].get_commtime(uav_pos, model_param_size_bits, M)  <= MAX_COMM_TIME)  # 예: 통신시간 임계값
             distance = np.linalg.norm(iot_devices[k].get_location() - uav_pos[:2])
-            print(iot_devices[k].get_commtime(uav_pos, model_param_size_bits, M), distance)
-            
+            comm_ok = distance <= 100
             if battery_ok and comm_ok:
                 feasible_clients.append(k)
                 #print(iot_devices[k].get_comm_energy(uav_pos, model_param_size_bits, M))  # 통신 에너지 소모량
@@ -484,7 +507,7 @@ if __name__ == "__main__":
                 selected_clients.extend(chosen_indices)
 
                 # 선택된 클라이언트 출력
-                print(f"Cluster {cid}: Selected clients -> {selected_clients}")
+            print(f"Cluster {cid}: Selected clients -> {selected_clients}")
 
 
 

@@ -14,7 +14,7 @@ class IoTDevice:
         self.comm_power = 10  #10 ~ 30 dBm
         self.dataset = dataset
         self.c_k = 1e7             # cycles per sample
-        self.f_k = 1e9            # CPU frequency (Hz)
+        self.f_k = np.random.uniform(1e9, 2e9)  # 1-2 GHz
     
     def get_location(self):
         return np.array([self.x, self.y])
