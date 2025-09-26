@@ -27,7 +27,7 @@ def args_parser():
     parser.add_argument('--epochs', type=int, default=300, help="rounds of training")
     parser.add_argument('--n_clients', type=int, default=40, help="number of users: K")
     parser.add_argument('--frac', type=float, default=1.0, help="the fraction of clients: C")
-    parser.add_argument('--local_ep', type=int, default=5, help="the number of local epochs: E")
+    parser.add_argument('--local_ep', type=int, default=3, help="the number of local epochs: E")
     parser.add_argument('--local_bs', type=int, default=100, help="local batch size: B")
     parser.add_argument('--test_bs', type=int, default=128, help="test batch size")
     parser.add_argument('--lr', type=float, default=0.01, help="learning rate")
@@ -39,7 +39,7 @@ def args_parser():
     parser.add_argument('--dataset', type=str, default='mnist', help="name of dataset")
     parser.add_argument('--iid', action='store_true', help='whether i.i.d or notc (default: non-iid)')
     parser.add_argument('--spc', action='store_true', help='whether spc or not (default: dirichlet)')
-    parser.add_argument('--beta', type=float, default=0.2, help="beta for Dirichlet distribution")
+    parser.add_argument('--beta', type=float, default=0.5, help="beta for Dirichlet distribution")
     parser.add_argument('--n_classes', type=int, default=10, help="number of classes")
     parser.add_argument('--n_channels', type=int, default=1, help="number of channels")
 
@@ -60,7 +60,8 @@ def args_parser():
     # UAV-FL
     parser.add_argument('--uavfl', action='store_true', help='for UAVFL simulation')
     parser.add_argument('--group_ratio', type=float, default=0.95, help="labels ratio for region group")
-    parser.add_argument('--algorithm', type=str, default='fedavg', help="algorithm selection (proposed, client_selection, pipeline, fedavg)")    # 따로 추가 
+    parser.add_argument('--algorithm', type=str, default='random', help="algorithm selection (proposed, client_selection, random, pipeline)")    # 따로 추가
+    parser.add_argument('--fedprox', action='store_true')
     parser.add_argument('--subchannels', type=int, default=3, help='number of subchannels')
     args = parser.parse_args()
     return args
@@ -137,7 +138,7 @@ if __name__ == "__main__":
 
     # parse args and set seed
     args = args_parser()
-    print("> Settings:", "epochs=",args.epochs, "n_clients=", args.n_clients, "algorithm=", args.algorithm, "dataset=", args.dataset, "model=", args.model, "iid=", args.iid)
+    print("> Settings:", "epochs=",args.epochs, "n_clients=", args.n_clients, "algorithm=", args.algorithm, "dataset=", args.dataset, "model=", args.model, "iid=", args.iid, "localep=", args.local_ep)
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
@@ -165,7 +166,7 @@ if __name__ == "__main__":
     num_processes = torch.multiprocessing.cpu_count()  # Number of available CPU cores
 
     # create dataset and model
-    result_rootpath = './result'
+    result_rootpath = './new_result'
     if not os.path.exists(result_rootpath):
         os.makedirs(result_rootpath)
     train_dataset, test_dataset, dict_users = get_dataset(args=args)
@@ -197,7 +198,7 @@ if __name__ == "__main__":
     region_data = np.vstack((region1, region2))
 
     # iot_devices = [IoTDevice(x, y, dataset_size, battery, dataset)]
-    iot_devices = [IoTDevice(x, y, len(dict_users[k]), np.random.uniform(100, 150, 1), args.dataset) for k, (x, y) in enumerate(region_data)]
+    iot_devices = [IoTDevice(x, y, len(dict_users[k]), np.random.uniform(150, 200, 1), args.dataset) for k, (x, y) in enumerate(region_data)]
 
     comp_times = np.array([device.get_computation_time() for device in iot_devices]).flatten()
     
@@ -220,7 +221,7 @@ if __name__ == "__main__":
         # Decide your 'tau' (time slot)
         # For demonstration, we'll define them as constants below.
         # Feel free to move them to args_parser() or set them in other ways.
-        tau = 12.0     # Example: time-slot length (seconds) or your own chosen unit
+        tau = np.std(comp_times) * 2     # Example: time-slot length (seconds) or your own chosen unit
 
         # Sort clients by their compute times
         sorted_indices = np.argsort(comp_times)       # Indices of devices sorted by ascending compute time
@@ -350,6 +351,7 @@ if __name__ == "__main__":
         # 예: uav_pos = np.array([x, y, z])
         # Example: compute model parameter size (in bits)
         model_param_count = sum(p.numel() for p in global_model.parameters())
+
         model_param_size_bits = model_param_count * 32  # float32 => 32 bits
         for k in range(args.n_clients):
             battery_ok = (iot_devices[k].get_battery() >= MIN_BATTERY)   # 예: 배터리 임계값
@@ -422,6 +424,7 @@ if __name__ == "__main__":
                         chosen_indices = np.array(feasible_in_cluster)
                 else:
                     # U_k가 큰 상위 M개 요소 선택
+                    
                     if len(feasible_in_cluster) >= M:
                         # U_array와 feasible_in_cluster를 함께 정렬
                         sorted_indices = np.argsort(U_array)[::-1]  # 내림차순 정렬
@@ -503,7 +506,7 @@ if __name__ == "__main__":
                 selected_clients.extend(chosen_indices)
 
                 # 선택된 클라이언트 출력
-            print(f"Cluster {cid}: Selected clients -> {selected_clients}")
+            print(f"Selected clients -> {selected_clients}")
 
 
 
@@ -584,7 +587,7 @@ if __name__ == "__main__":
     time.sleep(5)
     for p in processes:
         p.join()
-
+    
     # record test accuracies
     if not args.no_record:
-        np.savetxt(f"./result/{args.algorithm}_{args.n_clients}_{args.subchannels}.csv", test_accs, delimiter=",")
+        np.savetxt(f"./{result_rootpath}/{args.fedprox}_{args.beta}_{args.algorithm}_{args.n_clients}_{args.subchannels}_{args.dataset}.csv", test_accs, delimiter=",")

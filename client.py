@@ -57,6 +57,9 @@ def local_train(args, lr, c_i, c, K, model, dataloader, device):
             elif args.fed_strategy == 'scaffold':
                 for k, v in model.named_parameters():
                     loss += torch.sum(v * (c[k] - c_i[k]))
+            elif args.fedprox:
+                for k, v in model.named_parameters():
+                    loss += (0.1 / 2) * (v - prev_param[k]).norm(2)**2
             loss.backward()
             optimizer.step()
             K += 1
