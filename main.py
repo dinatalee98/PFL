@@ -123,6 +123,10 @@ if __name__ == "__main__":
                            format(args.dataset, args.model, args.local_ep, args.frac, args.fed_strategy, args.iid, args.spc)))
     w_glob = copy.deepcopy(global_model.state_dict())
     dict_to_device(w_glob, 'cpu')
+    
+    
+    result_file = open(f"./result/{args.dataset}_{args.algorithm}_{args.n_clients}_{args.beta}_{args.subchannels}.txt", "a")
+    result_file.write(f"round, test_acc, test_loss, selected_clients\n")
 
 
     # set iot devices
@@ -235,7 +239,7 @@ if __name__ == "__main__":
     print(f"Ordered waypoints: {ordered_waypoints}")
     
     
-    for round in tqdm(range(args.epochs)):
+    for round in tqdm(range(args.epochs), dynamic_ncols=True):
         # Move UAV to waypoints in order using greedy algorithm
         waypoint_index = round % len(ordered_waypoints)
         uav_pos = ordered_waypoints[waypoint_index].copy()
@@ -357,9 +361,13 @@ if __name__ == "__main__":
         # Update loss square for selected clients
         for i, client_idx in enumerate(selected_clients):
             loss_square = loss_locals[i] ** 2
+
+            # U_k = iot_devices[client_idx].num_of_data * math.sqrt(loss_square / iot_devices[client_idx].num_of_data)
+            # print(f"Round {round+1} Client {client_idx} utility: {U_k}, loss square: {loss_square}")
+
             iot_devices[client_idx].update_loss_square(loss_square)
         
-        lr *= args.lr_decay ** (round // args.lr_decay_step_size)
+        # lr *= args.lr_decay ** (round // args.lr_decay_step_size)
         w_glob, c = aggregate(args, w_locals, w_glob, c, c_locals)
         # print("Round {:3d} \t Training loss: {:.6f}".format(round + 1, loss), end=', ')
         del w_locals
@@ -367,20 +375,12 @@ if __name__ == "__main__":
         del c_locals
 
         
-        if (round + 1) % 10 == 0:
-            # test
-            global_model.load_state_dict(w_glob)
-            test_acc, test_loss = test(args, global_model, test_dataset, devices[-1])
-            test_accs.append(test_acc)
-            print("Testing accuracy: {:.2f}, Time: {:.4f}".format(test_acc, time.time() - start_time))
-
-            if args.use_checkpoint:
-                if test_acc == max(test_accs):
-                    torch.save(w_glob, result_rootpath + '/{}_{}_L{}_C{}_{}_iid{}_spc{}.pt'.
-                            format(args.dataset, args.model, args.local_ep, args.frac, args.fed_strategy, args.iid, args.spc))
-
+        # test
+        global_model.load_state_dict(w_glob)
+        test_acc, test_loss = test(args, global_model, test_dataset, devices[-1])
+        test_accs.append(test_acc)
+        # print("Testing accuracy: {:.2f}".format(test_acc))
+        
+        result_file.write(f"{round+1}, {test_acc:.10f}, {test_loss:.10f}, {selected_clients}\n")
+        result_file.flush()
     
-    # record test accuracies
-    if not args.no_record:
-        filename = f"{args.dataset}_{args.algorithm}_{args.n_clients}_{args.subchannels}_{args.beta}.txt"
-        np.savetxt(f"./{result_rootpath}/{filename}", test_accs, delimiter=",")

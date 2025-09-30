@@ -17,7 +17,7 @@ class IoTDevice:
         self.f_k = np.random.uniform(1e9, 2e9)            # CPU frequency (Hz)
         self.last_selected_round = -1  # Track when this device was last selected
         self.last_loss_square = 0.0  # Store the last round's loss square value
-        self.lambda_stale = 0.1  # Stale term weight for utility computation
+        self.lambda_stale = 4  # Stale term weight for utility computation
     
     def get_location(self):
         return np.array([self.x, self.y])
