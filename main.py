@@ -140,10 +140,10 @@ if __name__ == "__main__":
 
     if args.dataset == 'mnist':
         MIN_BATTERY = 1.0
-        MAX_COMM_TIME = 0.004
+        MAX_COMM_TIME = 0.007
     elif args.dataset == 'cifar10':
         MIN_BATTERY = 1.0
-        MAX_COMM_TIME = 0.15
+        MAX_COMM_TIME = 0.2
 
 
     # Cluster IoT devices by geographical location using K-means
