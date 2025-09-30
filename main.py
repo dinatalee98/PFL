@@ -6,7 +6,6 @@ import random
 import torch
 import numpy as np
 from torch.utils.data import DataLoader
-from torch.multiprocessing import Manager, Process, Queue
 
 from dataset import get_dataset, DatasetSplit
 from models import get_model
@@ -17,8 +16,10 @@ from test import test
 from iot_device import IoTDevice
 from sklearn.cluster import DBSCAN, KMeans
 from collections import defaultdict, Counter
+from tqdm import tqdm
 
 import sys
+
 
 
 def args_parser():
@@ -68,60 +69,6 @@ def args_parser():
     return args
 
 
-def train_clients(args, param_queue, return_queue, device, train_dataset, client_settings):
-    # seed setting
-    torch.manual_seed(args.seed)
-    torch.cuda.manual_seed(args.seed)
-    torch.cuda.manual_seed_all(args.seed)
-    np.random.seed(args.seed)
-    torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.deterministic = True
-    random.seed(args.seed)
-
-    # get model and train
-    model = get_model(args=args, device=device)
-    while True:
-        # get message containing paramters
-        param = param_queue.get()
-        if param == "kill":
-            # kill this process
-            break
-        else:
-            # parameter setting
-            lr = param['lr']
-            sel_clients = param['sel_clients']
-            c = param['c']
-
-            # training multiple clients
-            w_locals = []
-            loss_locals = []
-            c_locals = []
-            for client in sel_clients:
-                # get client settings
-                setting = client_settings[client]
-                c_i = setting.c_i
-                K = setting.K
-                # training dataloader for specific client
-                dataloader = DataLoader(DatasetSplit(train_dataset, setting.dict_users), batch_size=args.local_bs, shuffle=True)
-                # initialize model state dict
-                model.load_state_dict(param['model_param'])
-                # train a client
-                w, loss, c_i, K = local_train(args, lr, c_i, c, K, model, dataloader, device)
-                # append w, loss, lr, c_i, alpha
-                w_locals.append(w)
-                loss_locals.append(loss)
-                if args.fed_strategy == 'scaffold':
-                    c_locals.append(c_i)
-                # modify settings
-                setting.c_i = c_i
-                setting.K = K
-                del dataloader
-
-            # return training results
-            result = {'w_locals': w_locals, 'loss_locals': loss_locals, 'c_locals': c_locals}
-            return_queue.put(result)
-        del param
-    del model
 
 
 def zero_grad(model):
@@ -135,11 +82,10 @@ def dict_to_device(dict, device):
 
 
 if __name__ == "__main__":
-    torch.multiprocessing.set_start_method('spawn')
 
     # parse args and set seed
     args = args_parser()
-    print("> Settings:", "epochs=",args.epochs, "n_clients=", args.n_clients, "algorithm=", args.algorithm, "dataset=", args.dataset, "model=", args.model, "iid=", args.iid, "localep=", args.local_ep)
+    print(f"> Settings: n_clients={args.n_clients}, algorithm={args.algorithm}, dataset={args.dataset}, beta={args.beta}, subchannels={args.subchannels}, epochs={args.epochs}, localep={args.local_ep}")
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
@@ -178,15 +124,6 @@ if __name__ == "__main__":
     w_glob = copy.deepcopy(global_model.state_dict())
     dict_to_device(w_glob, 'cpu')
 
-    # create client setting list.
-    manager = Manager()
-    client_settings = []
-    for idx in range(args.n_clients):
-        s = manager.Namespace()
-        s.dict_users = dict_users[idx]
-        s.c_i = None
-        s.K = 15
-        client_settings.append(s)
 
     # set iot devices
     # Generate IoT device locations randomly in the region (0-400 x 0-400)
@@ -239,23 +176,11 @@ if __name__ == "__main__":
             pass
         
 
-    # create pool
-    param_queues = []
-    result_queues = []
-    processes = []
-    n_processes = n_devices * args.n_procs
-    for i in range(n_devices):
-        for _ in range(args.n_procs):
-            param_queue, result_queue = Queue(), Queue()
-            p = Process(target=train_clients, args=(args, param_queue, result_queue, devices[i], train_dataset, client_settings))
-            p.start()
-            processes.append(p)
-            param_queues.append(param_queue)
-            result_queues.append(result_queue)
+    # get model for training
+    model = get_model(args=args, device=devices[-1])
 
     # start training
     client_all = list(range(args.n_clients))
-    n_clients = int(args.frac * args.n_clients)
     c = zero_grad(global_model)
     lr = args.lr
     test_accs = []
@@ -310,7 +235,7 @@ if __name__ == "__main__":
     print(f"Ordered waypoints: {ordered_waypoints}")
     
     
-    for round in range(args.epochs):
+    for round in tqdm(range(args.epochs)):
         # Move UAV to waypoints in order using greedy algorithm
         waypoint_index = round % len(ordered_waypoints)
         uav_pos = ordered_waypoints[waypoint_index].copy()
@@ -359,9 +284,9 @@ if __name__ == "__main__":
         
         if args.algorithm == 'utility':
             selected_clients = select_clients_by_utility(feasible_clients, iot_devices)
-            print(f"[Round {round+1}] Utility: {len(selected_clients)} clients selected -> {selected_clients}")
+            # print(f"[Round {round+1}] Utility: {len(selected_clients)} clients selected -> {selected_clients}")
             
-        elif args.algorithm == 'pipelined':
+        elif args.algorithm == 'proposed':
             # Pipelined selection: select M clients for each cluster using utility-based method
             selected_clients = []
             cluster_ids = clusters.keys()
@@ -372,7 +297,7 @@ if __name__ == "__main__":
                 # Find feasible clients in this cluster
                 feasible_in_cluster = list(set(cluster_indices).intersection(feasible_clients))
                 if len(feasible_in_cluster) == 0:
-                    print(f"Cluster {cid}: No feasible client. Skipping...")
+                    # print(f"Cluster {cid}: No feasible client. Skipping...")
                     continue
                 
                 # Select M clients from this cluster using utility-based selection
@@ -380,14 +305,14 @@ if __name__ == "__main__":
                 
                 selected_clients.extend(chosen_indices)
             
-            print(f"[Round {round+1}] Pipelined: {len(selected_clients)} clients selected -> {selected_clients}")
+            # print(f"[Round {round+1}] Proposed: {len(selected_clients)} clients selected -> {selected_clients}")
             
         else:  # Default to random selection
             if len(feasible_clients) >= M:
                 selected_clients = np.random.choice(feasible_clients, size=M, replace=False).tolist()
             else:
                 selected_clients = feasible_clients.copy()
-            print(f"[Round {round+1}] Random: {len(selected_clients)} clients selected -> {selected_clients}")
+            # print(f"[Round {round+1}] Random: {len(selected_clients)} clients selected -> {selected_clients}")
         
         # Update last selected round for selected clients using IoT device methods
         for k in selected_clients:
@@ -399,75 +324,63 @@ if __name__ == "__main__":
         ########################################################################
         clients = list(map(int, selected_clients))
 
-        for idx, device in enumerate(iot_devices):
-            if idx in clients:  # 선택된 클라이언트인지 확인
-                comm_energy = device.get_comm_energy(device.get_commtime(uav_pos, model_param_size_bits, M))
-                comp_energy = device.get_comp_energy()
-                
-                device.battery -= (comm_energy + comp_energy)  # 배터리 값 갱신
+        for idx, client_idx in enumerate(selected_clients):
+            comm_energy = iot_devices[client_idx].get_comm_energy(iot_devices[client_idx].get_commtime(uav_pos, model_param_size_bits, M))
+            comp_energy = iot_devices[client_idx].get_comp_energy()
+            
+            iot_devices[client_idx].battery -= (comm_energy + comp_energy)
 
 
         
-        # assign clients to processes
-        assigned_clients = []
-        n_assigned_client = J * M // n_processes
-        #print(f"Assigned clients: {n_assigned_client} per process")
-        for i in range(n_processes):
-            assigned_clients.append(clients[:n_assigned_client])
-            del clients[:n_assigned_client]
-        for i, rest in enumerate(clients):
-            assigned_clients[i].append(rest)
-        # print(f"Assigned clients: {assigned_clients}")
-
         # start training
         start_time = time.time()
-        for i in range(n_processes):
-            param_queues[i].put({'model_param': copy.deepcopy(w_glob), 'lr': lr,
-                                 'sel_clients': assigned_clients[i], 'c': copy.deepcopy(c)})
-
-        # aggregate
         w_locals = []
         loss_locals = []
         c_locals = []
-        for i in range(n_processes):
-            result = result_queues[i].get()
-            w_locals.extend(result['w_locals'])
-            loss_locals.extend(result['loss_locals'])
-            c_locals.extend(result['c_locals'])
+        
+        for client in clients:
+            # training dataloader for specific client
+            dataloader = DataLoader(DatasetSplit(train_dataset, dict_users[client]), batch_size=args.local_bs, shuffle=True)
+            # initialize model state dict
+            model.load_state_dict(w_glob)
+            # train a client
+            w, loss, c_i, K = local_train(args, lr, None, c, 0, model, dataloader, devices[-1])
+            # append w, loss, lr, c_i, alpha
+            w_locals.append(w)
+            loss_locals.append(loss)
+            if args.fed_strategy == 'scaffold':
+                c_locals.append(c_i)
+            del dataloader
+        
         loss = sum(loss_locals) / len(loss_locals)
         
         # Update loss square for selected clients
         for i, client_idx in enumerate(selected_clients):
-            if i < len(loss_locals):
-                loss_square = loss_locals[i] ** 2
-                iot_devices[client_idx].update_loss_square(loss_square)
+            loss_square = loss_locals[i] ** 2
+            iot_devices[client_idx].update_loss_square(loss_square)
         
         lr *= args.lr_decay ** (round // args.lr_decay_step_size)
         w_glob, c = aggregate(args, w_locals, w_glob, c, c_locals)
-        print("Round {:3d} \t Training loss: {:.6f}".format(round + 1, loss), end=', ')
+        # print("Round {:3d} \t Training loss: {:.6f}".format(round + 1, loss), end=', ')
         del w_locals
         del loss_locals
         del c_locals
 
-        # test
-        global_model.load_state_dict(w_glob)
-        test_acc, test_loss = test(args, global_model, test_dataset, devices[-1])
-        test_accs.append(test_acc)
-        print("Testing accuracy: {:.2f}, Time: {:.4f}".format(test_acc, time.time() - start_time))
+        
+        if (round + 1) % 10 == 0:
+            # test
+            global_model.load_state_dict(w_glob)
+            test_acc, test_loss = test(args, global_model, test_dataset, devices[-1])
+            test_accs.append(test_acc)
+            print("Testing accuracy: {:.2f}, Time: {:.4f}".format(test_acc, time.time() - start_time))
 
-        if args.use_checkpoint:
-            if test_acc == max(test_accs):
-                torch.save(w_glob, result_rootpath + '/{}_{}_L{}_C{}_{}_iid{}_spc{}.pt'.
-                           format(args.dataset, args.model, args.local_ep, args.frac, args.fed_strategy, args.iid, args.spc))
+            if args.use_checkpoint:
+                if test_acc == max(test_accs):
+                    torch.save(w_glob, result_rootpath + '/{}_{}_L{}_C{}_{}_iid{}_spc{}.pt'.
+                            format(args.dataset, args.model, args.local_ep, args.frac, args.fed_strategy, args.iid, args.spc))
 
-    # close the pool to release resources
-    for i in range(n_processes):
-        param_queues[i].put("kill")
-
-    time.sleep(5)
-    for p in processes:
-        p.join()
     
     # record test accuracies
     if not args.no_record:
-        np.savetxt(f"./{result_rootpath}/{args.fedprox}_{args.beta}_{args.algorithm}_{args.n_clients}_{args.subchannels}_{args.dataset}.csv", test_accs, delimiter=",")
+        filename = f"{args.dataset}_{args.algorithm}_{args.n_clients}_{args.subchannels}_{args.beta}.txt"
+        np.savetxt(f"./{result_rootpath}/{filename}", test_accs, delimiter=",")
