@@ -187,17 +187,13 @@ if __name__ == "__main__":
         s.K = 15
         client_settings.append(s)
 
-    # print(dict_users[0])
     # set iot devices
     unit_num = int(args.n_clients/5)
     
     region1 = np.random.uniform(50, 150, (2*unit_num, 2))
     region2 = np.random.uniform(250, 350, (3*unit_num, 2))
-    #region3 = np.random.uniform(40, 50, (args.n_clients-3*unit_num, 2))
-    #region_data = np.vstack((region1, region2, region3))
     region_data = np.vstack((region1, region2))
 
-    # iot_devices = [IoTDevice(x, y, dataset_size, battery, dataset)]
     iot_devices = [IoTDevice(x, y, len(dict_users[k]), np.random.uniform(150, 200, 1), args.dataset) for k, (x, y) in enumerate(region_data)]
 
     comp_times = np.array([device.get_computation_time() for device in iot_devices]).flatten()
@@ -208,77 +204,42 @@ if __name__ == "__main__":
     J = 1  # Number of clusters
 
 
-    if args.algorithm == 'proposed' or  'pipeline':
-        ########################################################################
-        # Example: Pipeline-based clustering by local computation time
-        #
-        # 1) Sort devices by comp_times
-        # 2) Determine number of clusters J from the range of comp_times and tau
-        # 3) Group them in ascending order, ensuring each cluster has at least M devices
-        # 4) Store the result in a dictionary called `clusters`
-        ########################################################################
+    if args.algorithm == 'proposed':
+        tau = np.std(comp_times) * 2
 
-        # Decide your 'tau' (time slot)
-        # For demonstration, we'll define them as constants below.
-        # Feel free to move them to args_parser() or set them in other ways.
-        tau = np.std(comp_times) * 2     # Example: time-slot length (seconds) or your own chosen unit
-
-        # Sort clients by their compute times
-        sorted_indices = np.argsort(comp_times)       # Indices of devices sorted by ascending compute time
-        sorted_times = comp_times[sorted_indices]     # Sorted compute times
+        # Sort devices in ascending order of compute times
+        sorted_indices = np.argsort(comp_times)
+        sorted_times = comp_times[sorted_indices]
         
-        # Determine number of clusters, J
+        # Determine number of groups J using equation (2)
         t_min, t_max = np.min(sorted_times), np.max(sorted_times)
-        # Safeguard against division by zero if tau <= 0
         if tau <= 0:
             J = 1
         else:
-            # Example rule: number of clusters ~ (t_max - t_min) / tau
             J_float = (t_max - t_min) / tau
             J = int(np.ceil(J_float)) if J_float > 1 else 1
         
-        print(f"[Pipeline Clustering] Computed number of clusters J = {J} (tau={tau}, M={M})")
+        print(f"[Latency-Aware Grouping] Computed number of groups J = {J} (tau={tau}, K={args.n_clients})")
         
-        # Balanced cluster size if you want to keep them roughly uniform
-        # but with an additional constraint that each cluster has at least M devices
-        n_ideal = max(1, args.n_clients // J)
+        # Compute base group size and remainder
+        K = args.n_clients
+        base_size = K // J
+        remainder = K % J
         
-        ########################################################################
-        # Construct the clusters
-        ########################################################################
-        clusters = {}   # dictionary: cluster_id -> list of device indices
-        current_cluster_id = 0
+        group_sizes = [base_size + 1 if j < remainder else base_size for j in range(J) ]
         
+        # Initialize index and construct groups
+        clusters = {}
         i = 0
-        while i < args.n_clients and current_cluster_id < J:
-            # Start a new cluster
-            clusters[current_cluster_id] = []
-            cluster_size = 0
-            
-            # Fill up to n_ideal
-            while cluster_size < n_ideal and i < args.n_clients:
-                clusters[current_cluster_id].append(sorted_indices[i])
-                i += 1
-                cluster_size += 1
-            
-            # If this new cluster hasn't reached M devices, try adding more
-            while cluster_size < M and i < args.n_clients:
-                clusters[current_cluster_id].append(sorted_indices[i])
-                i += 1
-                cluster_size += 1
-            
-            current_cluster_id += 1
-        
-        # If leftover devices remain, assign them to whichever cluster(s) you like
-        # for balanced distribution or simply to the last cluster:
-        while i < args.n_clients:
-            clusters[current_cluster_id - 1].append(sorted_indices[i])
-            i += 1
+        for j, n_j in enumerate(group_sizes):
+            clusters[j] = sorted_indices[i:i+n_j].tolist()
+            i += n_j
         
         # Print final clusters
         for cid, devs in clusters.items():
-            #print(f"Cluster {cid}: {len(devs)} devices -> {devs}")
+            print(f"Group {cid}: {len(devs)} devices -> {devs}")
             pass
+        
 
     # create pool
     param_queues = []
