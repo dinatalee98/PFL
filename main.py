@@ -316,201 +316,87 @@ if __name__ == "__main__":
         uav_pos = ordered_waypoints[waypoint_index].copy()
 
         ########################################################################
-        # 1) 각 클라이언트별 "현재 글로벌 모델 기준" 유틸리티 계산
-        ########################################################################
-        #  - iot_devices[k].get_local_dataset() 등으로 해당 클라이언트 데이터 획득
-        #  - compute_pretraining_utility(...) 호출
-        #  - 결과를 배열 or dict에 저장
-        ########################################################################
-        utilities = [0.0] * args.n_clients
-        global_model.load_state_dict(w_glob)   # 직전 라운드까지 집계된 글로벌 모델
-        for k in range(args.n_clients):
-            local_indices = list(dict_users[k])
-            local_dataset_k = DataLoader(DatasetSplit(train_dataset, local_indices), batch_size=args.local_bs, shuffle=True)
-            utilities[k] = iot_devices[k].compute_pretraining_utility(
-                global_model, local_dataset_k, device=devices[-1]
-            )
-        ########################################################################
-        # 1) 모든 클라이언트에 대한 feasibility check (공통)
+        # 1) feasible clients check
         ########################################################################
         feasible_clients = []
 
-        # UAV 움직임
-        # 예: uav_pos = np.array([x, y, z])
         # Example: compute model parameter size (in bits)
         model_param_count = sum(p.numel() for p in global_model.parameters())
-
         model_param_size_bits = model_param_count * 32  # float32 => 32 bits
+        
         for k in range(args.n_clients):
-            battery_ok = (iot_devices[k].get_battery() >= MIN_BATTERY)   # 예: 배터리 임계값
-            comm_ok    = (iot_devices[k].get_commtime(uav_pos, model_param_size_bits, M)  <= MAX_COMM_TIME)  # 예: 통신시간 임계값
-            distance = np.linalg.norm(iot_devices[k].get_location() - uav_pos[:2])
-            comm_ok = (distance < 70)
-            # print(iot_devices[k].get_commtime(uav_pos, model_param_size_bits, M), distance)
+            battery_ok = (iot_devices[k].get_battery() >= MIN_BATTERY)
+            comm_ok = (iot_devices[k].get_commtime(uav_pos, model_param_size_bits, M) <= MAX_COMM_TIME)
             
             if battery_ok and comm_ok:
                 feasible_clients.append(k)
-                #print(iot_devices[k].get_comm_energy(uav_pos, model_param_size_bits, M))  # 통신 에너지 소모량
-                #print(iot_devices[k].get_comp_energy())  # 연산 에너지 소모량
 
-        # print(f"[Round {round+1}] {len(feasible_clients)} feasible clients -> {feasible_clients}")
-        # 만약 하나도 feasible 하지 않다면, 이번 라운드는 그냥 건너뛴다거나 하는 처리
         if len(feasible_clients) == 0:
             print(f"Round {round+1}: No feasible client. Skipping...")
-            # 원하는 대로 처리 (continue 등)
             continue
-
-        ########################################################################
-        # 2) Selection 방식에 따른 분기 (Proposed / Speed / Random 등)
-        ########################################################################
-        if args.algorithm == 'proposed':
-            # (a) 미리 만들어놓은 파이프라인 클러스터(예: compute-time 기반)
-            #     clusters: dict -> cluster_id -> list_of_device_indices
-            # (b) 각 클러스터별로 feasible_clients와의 교집합만 뽑기
-            # (c) Utility + Epsilon-Greedy 등 적용
-
-            # 예시: n_clients = int(args.frac * args.n_clients)
-            # subchannels = M  # 예시: M = 10
-            cluster_ids = clusters.keys()
-            
-            # print(f"[Round {round+1}] Proposed: {len(cluster_ids)} clusters -> {cluster_ids}")
-            """
-            leftover = n_clients % len(cluster_ids)
-            base_size = n_clients // len(cluster_ids)
-            """
-            # print(feasible_clients)
-            # epsilon 갱신용
-            if 'epsilon' not in locals():
-                epsilon = 1.0
-            epsilon_min   = 0.1
-            epsilon_decay = 0.95
-
-            selected_clients = []
-            
-            for cid in cluster_ids:
-                # 2-1) 클러스터 내 클라이언트
-                cluster_indices = clusters[cid]
-                # 2-2) 'feasible_clients'와 교집합
-                feasible_in_cluster = list(set(cluster_indices).intersection(feasible_clients))
-                if len(feasible_in_cluster) == 0:
-                    print(f"Cluster {cid}: No feasible client. Skipping...")
-                    continue
-                # print(f"Cluster {cid}: {len(feasible_in_cluster)} feasible clients -> {feasible_in_cluster}")
-                # 2-4) 유틸리티 계산 (예: 랜덤 예시)
-                # (c) "학습 전"에 계산한 유틸리티 배열 생성
-                U_array = np.array([ utilities[idx] for idx in feasible_in_cluster ])
-                
-                U_sum   = np.sum(U_array) if np.sum(U_array) > 0 else 1e-12
-                # 2-5) Epsilon-Greedy 선택
-                chosen_indices = []
-                idx_order = np.random.permutation(len(feasible_in_cluster))
-                if epsilon < np.random.rand():
-                    # Randomly select M elements from feasible_in_cluster
-                    if len(feasible_in_cluster) >= M:
-                        chosen_indices = np.random.choice(feasible_in_cluster, size=M, replace=False)
-                    else:
-                        chosen_indices = np.array(feasible_in_cluster)
-                else:
-                    # U_k가 큰 상위 M개 요소 선택
-                    
-                    if len(feasible_in_cluster) >= M:
-                        # U_array와 feasible_in_cluster를 함께 정렬
-                        sorted_indices = np.argsort(U_array)[::-1]  # 내림차순 정렬
-                        top_M_indices = sorted_indices[:M]
-                        chosen_indices = [feasible_in_cluster[idx] for idx in top_M_indices]
-                    else:
-                        chosen_indices = np.array(feasible_in_cluster)
-
-                selected_clients.extend(chosen_indices)
-
-            # epsilon decay
-            if round % 10 == 0:
-                epsilon = max(epsilon_min, epsilon*epsilon_decay)
-
-            print(f"[Round {round+1}] Proposed: {len(selected_clients)} clients selected -> {selected_clients}")
-
-            # >>> 이후 local_train, aggregation 등에 selected_clients 사용
-
-    
-        elif args.algorithm == 'client_selection':
-
-            if 'epsilon' not in locals():
-                epsilon = 1.0
-            epsilon_min   = 0.1
-            epsilon_decay = 0.95
-
-            selected_clients = []
-
-            U_array = np.array([utilities[idx] for idx in feasible_clients])
-            U_sum = np.sum(U_array) if np.sum(U_array) > 0 else 1e-12
-
-            # 2-5) Epsilon-Greedy 선택
-            chosen_indices = []
-            if epsilon < np.random.rand():
-                # Randomly select M elements from feasible_clients
-                if len(feasible_clients) >= M:
-                    chosen_indices = np.random.choice(feasible_clients, size=M, replace=False)
-                else:
-                    chosen_indices = np.array(feasible_clients)
-            else:
-                # U_k가 큰 상위 M개 요소 선택
-                if len(feasible_clients) >= M:
-                    # 유틸리티 배열과 feasible_clients를 함께 정렬
-                    sorted_indices = np.argsort(U_array)[::-1]  # 내림차순 정렬
-                    top_M_indices = sorted_indices[:M]
-                    chosen_indices = [feasible_clients[idx] for idx in top_M_indices]
-                else:
-                    chosen_indices = np.array(feasible_clients)
-
-            selected_clients.extend(chosen_indices)
-
-            # epsilon decay
-            if round % 10 == 0:
-                epsilon = max(epsilon_min, epsilon * epsilon_decay)
-
-            print(f"Selected clients: {selected_clients}")
-
-
-        elif args.algorithm ==  'pipeline':
-            
-            selected_clients = []
-            cluster_ids = clusters.keys()
-
-            for cid in cluster_ids:
-                cluster_indices = clusters[cid]
-                
-                # 클러스터 내에서 feasible_clients와의 교집합 구하기
-                feasible_in_cluster = list(set(cluster_indices).intersection(feasible_clients))
-                if len(feasible_in_cluster) == 0:
-                    print(f"Cluster {cid}: No feasible client. Skipping...")
-                    continue
         
-                # feasible_in_cluster에서 무작위 M개 선택
-                if len(feasible_in_cluster) >= M:
-                    chosen_indices = np.random.choice(feasible_in_cluster, size=M, replace=False)
-                else:
-                    chosen_indices = np.array(feasible_in_cluster)
+
+        ########################################################################
+        # 2) Client selection based on algorithm
+        ########################################################################
+        
+        def select_clients_by_utility(feasible_clients, iot_devices):
+            if len(feasible_clients) >= M:
+                recency_utilities = []
+                for k in feasible_clients:
+                    recency_util = iot_devices[k].compute_utility_with_stale_term(round)
+                    recency_utilities.append(recency_util)
+                
+                recency_utilities = np.array(recency_utilities)
+                sorted_indices = np.argsort(recency_utilities)[::-1]  # Descending order
+                top_M_indices = sorted_indices[:M]
+                selected_clients = [feasible_clients[idx] for idx in top_M_indices]
+            else:
+                selected_clients = feasible_clients.copy()
+            
+            return selected_clients
+
+        
+        if args.algorithm == 'utility':
+            selected_clients = select_clients_by_utility(feasible_clients, iot_devices)
+            print(f"[Round {round+1}] Utility: {len(selected_clients)} clients selected -> {selected_clients}")
+            
+        elif args.algorithm == 'pipelined':
+            # Pipelined selection: select M clients for each cluster using utility-based method
+            selected_clients = []
+            cluster_ids = clusters.keys()
+            
+            for cid in cluster_ids:
+                cluster_indices = clusters[cid]
+                
+                # Find feasible clients in this cluster
+                feasible_in_cluster = list(set(cluster_indices).intersection(feasible_clients))
+                if len(feasible_in_cluster) == 0:
+                    print(f"Cluster {cid}: No feasible client. Skipping...")
+                    continue
+                
+                # Select M clients from this cluster using utility-based selection
+                chosen_indices = select_clients_by_utility(feasible_in_cluster, iot_devices)
                 
                 selected_clients.extend(chosen_indices)
-
-                # 선택된 클라이언트 출력
-            print(f"Selected clients -> {selected_clients}")
-
-
-
-        else: # fedavg
-            selected_clients = []
-            chosen_indices = np.random.choice(feasible_clients, size=M, replace=False) if len(feasible_clients) >= M else feasible_clients
-            # chosen_indices = list(map(int, chosen_indices))
-            selected_clients.extend(chosen_indices)
-            print(f"Selected clients: {selected_clients}")
+            
+            print(f"[Round {round+1}] Pipelined: {len(selected_clients)} clients selected -> {selected_clients}")
+            
+        else:  # Default to random selection
+            if len(feasible_clients) >= M:
+                selected_clients = np.random.choice(feasible_clients, size=M, replace=False).tolist()
+            else:
+                selected_clients = feasible_clients.copy()
+            print(f"[Round {round+1}] Random: {len(selected_clients)} clients selected -> {selected_clients}")
+        
+        # Update last selected round for selected clients using IoT device methods
+        for k in selected_clients:
+            iot_devices[k].update_selection_round(round)
 
 
         ########################################################################
-        # 3) 실제 로컬 훈련, 파라미터 큐 전송, 결과 수신, 모델 집계 등
+        # 3) federated learning
         ########################################################################
-        # 예: param_queue에 model_param, lr, sel_clients=selected_clients 등을 보내고,
-        #     result_queues에서 w_locals, loss_locals 수신한 뒤 aggregate
         clients = list(map(int, selected_clients))
 
         for idx, device in enumerate(iot_devices):
@@ -549,6 +435,12 @@ if __name__ == "__main__":
             loss_locals.extend(result['loss_locals'])
             c_locals.extend(result['c_locals'])
         loss = sum(loss_locals) / len(loss_locals)
+        
+        # Update loss square for selected clients
+        for i, client_idx in enumerate(selected_clients):
+            if i < len(loss_locals):
+                loss_square = loss_locals[i] ** 2
+                iot_devices[client_idx].update_loss_square(loss_square)
         
         lr *= args.lr_decay ** (round // args.lr_decay_step_size)
         w_glob, c = aggregate(args, w_locals, w_glob, c, c_locals)

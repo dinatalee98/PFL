@@ -15,6 +15,9 @@ class IoTDevice:
         self.dataset = dataset
         self.c_k = 1e7             # cycles per sample
         self.f_k = np.random.uniform(1e9, 2e9)            # CPU frequency (Hz)
+        self.last_selected_round = -1  # Track when this device was last selected
+        self.last_loss_square = 0.0  # Store the last round's loss square value
+        self.lambda_stale = 0.1  # Stale term weight for utility computation
     
     def get_location(self):
         return np.array([self.x, self.y])
@@ -239,3 +242,29 @@ class IoTDevice:
             stat_utility = 0.0
 
         return stat_utility
+    
+    def compute_utility_with_stale_term(self, current_round):
+        """
+        Compute utility using the formula:
+        U_k = D_k * sqrt((1/D_k) * sum(l^2(x_ki, y_ki))) + lambda * Delta_t_k
+        
+        where:
+        - D_k is the number of data samples
+        - sum(l^2(x_ki, y_ki)) is the sum of squared losses from last round
+        - Delta_t_k = current_round - last_selected_round (stale rounds)
+        - lambda is the stale term weight (stored as self.lambda_stale)
+        """
+        D_k = self.num_of_data
+        Delta_t_k = current_round - self.last_selected_round
+        
+        utility = D_k * math.sqrt(self.last_loss_square / D_k) + self.lambda_stale * Delta_t_k
+            
+        return utility
+    
+    def update_selection_round(self, current_round):
+        """Update the round when this device was last selected"""
+        self.last_selected_round = current_round
+    
+    def update_loss_square(self, loss_square):
+        """Update the loss square value from the last training round"""
+        self.last_loss_square = loss_square
