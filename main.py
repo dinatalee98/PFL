@@ -58,7 +58,7 @@ if __name__ == "__main__":
     num_processes = torch.multiprocessing.cpu_count()  # Number of available CPU cores
 
     # create dataset and model
-    result_rootpath = './new_result'
+    result_rootpath = args.result_path
     if not os.path.exists(result_rootpath):
         os.makedirs(result_rootpath)
     train_dataset, test_dataset, dict_users = get_dataset(args=args)
@@ -70,7 +70,7 @@ if __name__ == "__main__":
     dict_to_device(w_glob, 'cpu')
     
     
-    result_file = open(f"./result/{args.dataset}_{args.algorithm}_{args.n_clients}_{args.beta}_{args.subchannels}.txt", "a")
+    result_file = open(f"./{result_rootpath}/{args.dataset}_{args.algorithm}_{args.n_clients}_{args.beta}_{args.subchannels}.txt", "a")
     result_file.write(f"round, test_acc, test_loss, selected_clients\n")
 
 

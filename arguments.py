@@ -36,6 +36,7 @@ def args_parser():
     parser.add_argument('--subchannels', type=int, default=3, help='number of subchannels')
     parser.add_argument('--n_clusters', type=int, default=3, help='number of clusters L for UAV waypoints')
     parser.add_argument("--window", type=int, default=10, help='window size for moving average')
+    parser.add_argument("--result_path", type=str, default='result', help='result path')
     args = parser.parse_args()
     return args
 
