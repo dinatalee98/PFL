@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 class IoTDevice:    
-    def __init__(self, x, y, D_k, b, dataset):
+    def __init__(self, x, y, D_k, b, dataset, lambda_stale):
         self.x = x
         self.y = y
         self.num_of_data = D_k
@@ -17,8 +17,8 @@ class IoTDevice:
         self.f_k = np.random.uniform(1e9, 2e9)            # CPU frequency (Hz)
         self.last_selected_round = -1  # Track when this device was last selected
         self.last_loss_square = 0.0  # Store the last round's loss square value
-        self.lambda_stale = 4  # Stale term weight for utility computation
-    
+        self.lambda_stale = lambda_stale  # UCB temporal bonus coefficient (set from args)
+
     def get_location(self):
         return np.array([self.x, self.y])
     
@@ -212,7 +212,7 @@ class IoTDevice:
         U_k = D_k * math.sqrt(avg_loss_sq)
         return U_k
     
-    def compute_pretraining_utility(self, model, local_dataset, device):
+    def compute_pretraining_utility(self, model, local_dataset, device, current_round):
         """
         - model: 현재 글로벌 모델 (학습 전 상태)
         - local_dataset: 클라이언트 k의 로컬 데이터로 구성된 DataLoader (또는 리스트)
@@ -241,7 +241,14 @@ class IoTDevice:
         else:
             stat_utility = 0.0
 
-        return stat_utility
+        # UCB-style temporal bonus using staleness s
+        if self.last_selected_round >= 0:
+            s = max(0, current_round - self.last_selected_round)
+        else:
+            s = current_round + 1
+        temporal_bonus = self.lambda_stale * math.sqrt(math.log(max(2, current_round + 1)) / (1 + s))
+
+        return stat_utility + temporal_bonus
     
     def compute_utility_with_stale_term(self, current_round):
         """

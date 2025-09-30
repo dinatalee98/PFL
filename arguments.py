@@ -37,6 +37,10 @@ def args_parser():
     parser.add_argument('--n_clusters', type=int, default=3, help='number of clusters L for UAV waypoints')
     parser.add_argument("--window", type=int, default=10, help='window size for moving average')
     parser.add_argument("--result_path", type=str, default='result', help='result path')
+    parser.add_argument('--epsilon_start', type=float, default=0.9, help='epsilon-greedy start value')
+    parser.add_argument('--epsilon_decay', type=float, default=0.98, help='epsilon decay per round')
+    parser.add_argument('--epsilon_min', type=float, default=0.2, help='minimum epsilon')
+    parser.add_argument('--lambda_stale', type=float, default=0.2, help='lambda stale term weight')
     args = parser.parse_args()
     return args
 

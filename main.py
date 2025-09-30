@@ -70,7 +70,7 @@ if __name__ == "__main__":
     dict_to_device(w_glob, 'cpu')
     
     
-    result_file = open(f"./{result_rootpath}/{args.dataset}_{args.algorithm}_{args.n_clients}_{args.beta}_{args.subchannels}.txt", "a")
+    result_file = open(f"./{result_rootpath}/{args.dataset}_{args.algorithm}_{args.n_clients}_{args.beta}_{args.subchannels}_{args.lambda_stale}.txt", "a")
     result_file.write(f"round, test_acc, test_loss, selected_clients\n")
 
 
@@ -78,7 +78,7 @@ if __name__ == "__main__":
     # Generate IoT device locations randomly in the region (0-400 x 0-400)
     region_data = np.random.uniform(0, 400, (args.n_clients, 2))
 
-    iot_devices = [IoTDevice(x, y, len(dict_users[k]), np.random.uniform(150, 200, 1), args.dataset) for k, (x, y) in enumerate(region_data)]
+    iot_devices = [IoTDevice(x, y, len(dict_users[k]), np.random.uniform(150, 200, 1), args.dataset, args.lambda_stale) for k, (x, y) in enumerate(region_data)]
 
     comp_times = np.array([device.get_computation_time() for device in iot_devices]).flatten()
     
@@ -138,8 +138,13 @@ if __name__ == "__main__":
     # Client selection
     ########################################################################
 
-    MIN_BATTERY = 1.0
-    MAX_COMM_TIME = 0.006
+    if args.dataset == 'mnist':
+        MIN_BATTERY = 1.0
+        MAX_COMM_TIME = 0.004
+    elif args.dataset == 'cifar10':
+        MIN_BATTERY = 1.0
+        MAX_COMM_TIME = 0.15
+
 
     # Cluster IoT devices by geographical location using K-means
     device_locations = np.array([[device.x, device.y] for device in iot_devices])
@@ -184,6 +189,7 @@ if __name__ == "__main__":
     print(f"Ordered waypoints: {ordered_waypoints}")
     
     
+    epsilon = args.epsilon_start
     for round in tqdm(range(args.epochs), dynamic_ncols=True):
         # Move UAV to waypoints in order using greedy algorithm
         waypoint_index = round % len(ordered_waypoints)
@@ -214,17 +220,20 @@ if __name__ == "__main__":
         # 2) Client selection based on algorithm
         ########################################################################
         
-        def select_clients_by_utility(feasible_clients, iot_devices):
+        def select_clients_by_utility(feasible_clients):
             if len(feasible_clients) >= M:
-                recency_utilities = []
-                for k in feasible_clients:
-                    recency_util = iot_devices[k].compute_utility_with_stale_term(round)
-                    recency_utilities.append(recency_util)
-                
-                recency_utilities = np.array(recency_utilities)
-                sorted_indices = np.argsort(recency_utilities)[::-1]  # Descending order
-                top_M_indices = sorted_indices[:M]
-                selected_clients = [feasible_clients[idx] for idx in top_M_indices]
+                if np.random.rand() > epsilon:
+                    selected_clients = np.random.choice(feasible_clients, size=M, replace=False).tolist()
+                else:
+                    recency_utilities = []
+                    for k in feasible_clients:
+                        recency_util = iot_devices[k].compute_utility_with_stale_term(round)
+                        recency_utilities.append(recency_util)
+                    
+                    recency_utilities = np.array(recency_utilities)
+                    sorted_indices = np.argsort(recency_utilities)[::-1]  # Descending order
+                    top_M_indices = sorted_indices[:M]
+                    selected_clients = [feasible_clients[idx] for idx in top_M_indices]
             else:
                 selected_clients = feasible_clients.copy()
             
@@ -232,7 +241,7 @@ if __name__ == "__main__":
 
         
         if args.algorithm == 'utility':
-            selected_clients = select_clients_by_utility(feasible_clients, iot_devices)
+            selected_clients = select_clients_by_utility(feasible_clients)
             # print(f"[Round {round+1}] Utility: {len(selected_clients)} clients selected -> {selected_clients}")
             
         elif args.algorithm == 'proposed':
@@ -250,7 +259,7 @@ if __name__ == "__main__":
                     continue
                 
                 # Select M clients from this cluster using utility-based selection
-                chosen_indices = select_clients_by_utility(feasible_in_cluster, iot_devices)
+                chosen_indices = select_clients_by_utility(feasible_in_cluster)
                 
                 selected_clients.extend(chosen_indices)
             
@@ -266,6 +275,8 @@ if __name__ == "__main__":
         # Update last selected round for selected clients using IoT device methods
         for k in selected_clients:
             iot_devices[k].update_selection_round(round)
+        epsilon *= args.epsilon_decay
+        epsilon = max(args.epsilon_min, epsilon)
 
 
         ########################################################################
