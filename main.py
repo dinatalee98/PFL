@@ -63,6 +63,7 @@ def args_parser():
     parser.add_argument('--algorithm', type=str, default='random', help="algorithm selection (proposed, client_selection, random, pipeline)")    # 따로 추가
     parser.add_argument('--fedprox', action='store_true')
     parser.add_argument('--subchannels', type=int, default=3, help='number of subchannels')
+    parser.add_argument('--n_clusters', type=int, default=3, help='number of clusters L for UAV waypoints')
     args = parser.parse_args()
     return args
 
@@ -188,11 +189,8 @@ if __name__ == "__main__":
         client_settings.append(s)
 
     # set iot devices
-    unit_num = int(args.n_clients/5)
-    
-    region1 = np.random.uniform(50, 150, (2*unit_num, 2))
-    region2 = np.random.uniform(250, 350, (3*unit_num, 2))
-    region_data = np.vstack((region1, region2))
+    # Generate IoT device locations randomly in the region (0-400 x 0-400)
+    region_data = np.random.uniform(0, 400, (args.n_clients, 2))
 
     iot_devices = [IoTDevice(x, y, len(dict_users[k]), np.random.uniform(150, 200, 1), args.dataset) for k, (x, y) in enumerate(region_data)]
 
@@ -269,24 +267,53 @@ if __name__ == "__main__":
     MIN_BATTERY = 1.0
     MAX_COMM_TIME = 0.006
 
-    # Define waypoints
-    waypoints = np.array([[100.0, 100.0, 100.0], [300.0, 300.0, 100.0]])
-    uav_pos = np.array([200.0, 0.0, 100.0])  # (x, y, z)
+    # Cluster IoT devices by geographical location using K-means
+    device_locations = np.array([[device.x, device.y] for device in iot_devices])
+    L = args.n_clusters  # Number of clusters
     
-
-    for round in range(args.epochs):
-        #100, 100, 300, 300
-        #uav_pos
-        if round % 2 == 0:
-            uav_pos = waypoints[0]
-        elif round % 2 == 1:
-            uav_pos = waypoints[1]
-        else:
-            # Move UAV gradually from start to end position in one round
-            t = (round % 2) / 2.0  # Full transition in 1 round
-            uav_pos = (1 - t) * waypoints[0] + t * waypoints[1]
+    # Perform K-means clustering
+    kmeans = KMeans(n_clusters=L, random_state=args.seed, n_init=10)
+    cluster_labels = kmeans.fit_predict(device_locations)
+    
+    # Calculate cluster centroids as waypoints
+    cluster_centroids = kmeans.cluster_centers_
+    waypoints = np.column_stack([cluster_centroids, np.full(L, 100.0)])  # Add z=100.0 for all waypoints
+    
+    print(f"Clustered {len(iot_devices)} IoT devices into {L} clusters")
+    print(f"Waypoints (centroids): {waypoints}")
+    
+    # Greedy algorithm for waypoint ordering (nearest neighbor)
+    def greedy_waypoint_ordering(waypoints):
+        if len(waypoints) <= 1:
+            return waypoints
         
-        # print(f"Round {round+1}: UAV Position: {uav_pos}")
+        ordered_waypoints = []
+        remaining_waypoints = waypoints.copy()
+        
+        # Start with an arbitrary waypoint (first one)
+        current_waypoint = remaining_waypoints[0]
+        ordered_waypoints.append(current_waypoint)
+        remaining_waypoints = np.delete(remaining_waypoints, 0, axis=0)
+        
+        # Greedy selection: always choose the nearest remaining waypoint
+        while len(remaining_waypoints) > 0:
+            distances = [np.linalg.norm(current_waypoint - wp) for wp in remaining_waypoints]
+            nearest_idx = np.argmin(distances)
+            current_waypoint = remaining_waypoints[nearest_idx]
+            ordered_waypoints.append(current_waypoint)
+            remaining_waypoints = np.delete(remaining_waypoints, nearest_idx, axis=0)
+        
+        return np.array(ordered_waypoints)
+    
+    # Order waypoints using greedy algorithm
+    ordered_waypoints = greedy_waypoint_ordering(waypoints)
+    print(f"Ordered waypoints: {ordered_waypoints}")
+    
+    
+    for round in range(args.epochs):
+        # Move UAV to waypoints in order using greedy algorithm
+        waypoint_index = round % len(ordered_waypoints)
+        uav_pos = ordered_waypoints[waypoint_index].copy()
 
         ########################################################################
         # 1) 각 클라이언트별 "현재 글로벌 모델 기준" 유틸리티 계산
