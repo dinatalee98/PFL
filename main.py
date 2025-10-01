@@ -78,7 +78,7 @@ if __name__ == "__main__":
     # Generate IoT device locations randomly in the region (0-400 x 0-400)
     region_data = np.random.uniform(0, 400, (args.n_clients, 2))
 
-    iot_devices = [IoTDevice(x, y, len(dict_users[k]), np.random.uniform(150, 200, 1), args.dataset, args.lambda_stale) for k, (x, y) in enumerate(region_data)]
+    iot_devices = [IoTDevice(x, y, len(dict_users[k]), np.random.uniform(250, 300, 1), args.dataset, args.lambda_stale) for k, (x, y) in enumerate(region_data)]
 
     comp_times = np.array([device.get_computation_time() for device in iot_devices]).flatten()
     
@@ -138,12 +138,8 @@ if __name__ == "__main__":
     # Client selection
     ########################################################################
 
-    if args.dataset == 'mnist':
-        MIN_BATTERY = 1.0
-        MAX_COMM_TIME = 0.007
-    elif args.dataset == 'cifar10':
-        MIN_BATTERY = 1.0
-        MAX_COMM_TIME = 0.2
+    MIN_BATTERY = 1.0
+    MAX_COMM_TIME = tau
 
 
     # Cluster IoT devices by geographical location using K-means
@@ -329,6 +325,8 @@ if __name__ == "__main__":
         del w_locals
         del loss_locals
         del c_locals
+        
+        lr *= args.lr_decay ** (round // args.lr_decay_step_size)
 
         
         # test
