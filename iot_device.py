@@ -262,9 +262,15 @@ class IoTDevice:
         - lambda is the stale term weight (stored as self.lambda_stale)
         """
         D_k = self.num_of_data
-        Delta_t_k = current_round - self.last_selected_round
         
-        utility = D_k * math.sqrt(self.last_loss_square / D_k) + self.lambda_stale * Delta_t_k
+        # UCB-style temporal bonus using staleness s
+        if self.last_selected_round >= 0:
+            s = max(0, current_round - self.last_selected_round)
+        else:
+            s = current_round + 1
+        temporal_bonus = self.lambda_stale * math.sqrt(math.log(max(2, current_round + 1)) / (1 + s))
+        
+        utility = D_k * math.sqrt(self.last_loss_square / D_k) + temporal_bonus
             
         return utility
     

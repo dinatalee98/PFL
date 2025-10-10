@@ -87,10 +87,9 @@ if __name__ == "__main__":
     M = args.subchannels # Number of subchannels
     J = 1  # Number of clusters
 
-
+    tau = np.std(comp_times) * 2
+    
     if args.algorithm == 'proposed':
-        tau = np.std(comp_times) * 2
-
         # Sort devices in ascending order of compute times
         sorted_indices = np.argsort(comp_times)
         sorted_times = comp_times[sorted_indices]
