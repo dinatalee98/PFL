@@ -42,16 +42,21 @@ def moving_average(values: List[float], window: int) -> np.ndarray:
 def plot_ma(rounds: List[int], accs: List[float], window: int, out_path: str) -> None:
     acc_ma = moving_average(accs, window)
 
+    plt.rcParams['font.family'] = 'Times New Roman'
+    plt.rcParams['font.size'] = 12
+    
     fig, ax = plt.subplots(1, 1, figsize=(10, 5))
 
     ax.plot(rounds, acc_ma, label=f"Accuracy MA{window}")
-    ax.set_xlabel("Round")
-    ax.set_ylabel("Test Accuracy")
+    ax.set_xlabel("Round", fontsize=14)
+    ax.set_ylabel("Test Accuracy", fontsize=14)
     ax.grid(True, linestyle=":", alpha=0.5)
-    ax.legend()
+    ax.legend(loc='lower right')
+    
+    ax.set_xlim(min(rounds), max(rounds))
 
     fig.tight_layout()
-    fig.savefig(out_path, dpi=150)
+    fig.savefig(out_path, dpi=150, bbox_inches='tight')
     plt.close(fig)
 
 
@@ -59,20 +64,31 @@ def main() -> None:
     args = args_parser()
 
     if args.algorithm == "all":
+        plt.rcParams['font.family'] = 'Times New Roman'
+        plt.rcParams['font.size'] = 12
+        
         algs = ["proposed", "utility", "random"]
         fig, ax = plt.subplots(1, 1, figsize=(10, 5))
+        
+        all_rounds = []
         for alg in algs:
             file = f"./{args.result_path}/{args.dataset}_{alg}_{args.n_clients}_{args.beta}_{args.subchannels}_{args.lambda_stale}.txt"
             rounds, accs, _ = read_metrics(file)
+            all_rounds.extend(rounds)
             acc_ma = moving_average(accs, args.window)
             ax.plot(rounds, acc_ma, label=alg.capitalize())
-        ax.set_xlabel("Round")
-        ax.set_ylabel("Test Accuracy")
+        
+        ax.set_xlabel("Round", fontsize=14)
+        ax.set_ylabel("Test Accuracy", fontsize=14)
         ax.grid(True, linestyle=":", alpha=0.5)
-        ax.legend()
+        ax.legend(loc='lower right')
+        
+        if all_rounds:
+            ax.set_xlim(min(all_rounds), max(all_rounds))
+        
         fig.tight_layout()
         out_path = f"./{args.result_path}/{args.dataset}_all_{args.n_clients}_{args.beta}_{args.subchannels}_{args.lambda_stale}_ma{args.window}.png"
-        fig.savefig(out_path, dpi=150)
+        fig.savefig(out_path, dpi=150, bbox_inches='tight')
         plt.close(fig)
     else:
         file = f"./{args.result_path}/{args.dataset}_{args.algorithm}_{args.n_clients}_{args.beta}_{args.subchannels}_{args.lambda_stale}.txt"
