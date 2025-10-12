@@ -39,6 +39,27 @@ def moving_average(values: List[float], window: int) -> np.ndarray:
     return result
 
 
+def calculate_enhancements(alg_data: dict) -> None:
+    print("\n=== Proposed Algorithm Enhancement Analysis ===")
+    proposed_accs = alg_data["proposed"]
+    
+    for alg_name, accs in alg_data.items():
+        if alg_name == "proposed":
+            continue
+            
+        min_len = min(len(proposed_accs), len(accs))
+        enhancements = []
+        
+        for i in range(min_len):
+            if accs[i] > 0:
+                enhancement = ((proposed_accs[i] - accs[i]) / accs[i]) * 100
+                enhancements.append(enhancement)
+        
+        if enhancements:
+            avg_enhancement = np.mean(enhancements)
+            print(f"Proposed vs {alg_name.capitalize()}: {avg_enhancement:.2f}%")
+
+
 def plot_ma(rounds: List[int], accs: List[float], window: int, out_path: str) -> None:
     acc_ma = moving_average(accs, window)
 
@@ -67,16 +88,21 @@ def main() -> None:
         plt.rcParams['font.family'] = 'Times New Roman'
         plt.rcParams['font.size'] = 12
         
-        algs = ["proposed", "utility", "random"]
+        algs = ["proposed", "pipeline", "utility", "random"]
         fig, ax = plt.subplots(1, 1, figsize=(10, 5))
         
         all_rounds = []
+        alg_data = {}
+        
         for alg in algs:
             file = f"./{args.result_path}/{args.dataset}_{alg}_{args.n_clients}_{args.beta}_{args.subchannels}_{args.lambda_stale}.txt"
             rounds, accs, _ = read_metrics(file)
             all_rounds.extend(rounds)
             acc_ma = moving_average(accs, args.window)
             ax.plot(rounds, acc_ma, label=alg.capitalize())
+            
+            # Store raw accuracy data for enhancement calculation
+            alg_data[alg] = accs
         
         ax.set_xlabel("Round", fontsize=14)
         ax.set_ylabel("Test Accuracy", fontsize=14)
@@ -90,6 +116,9 @@ def main() -> None:
         out_path = f"./{args.result_path}/{args.dataset}_all_{args.n_clients}_{args.beta}_{args.subchannels}_{args.lambda_stale}_ma{args.window}.png"
         fig.savefig(out_path, dpi=150, bbox_inches='tight')
         plt.close(fig)
+        
+        # Calculate and print enhancements
+        calculate_enhancements(alg_data)
     else:
         file = f"./{args.result_path}/{args.dataset}_{args.algorithm}_{args.n_clients}_{args.beta}_{args.subchannels}_{args.lambda_stale}.txt"
         rounds, accs, _ = read_metrics(file)

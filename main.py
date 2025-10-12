@@ -89,7 +89,7 @@ if __name__ == "__main__":
 
     tau = np.std(comp_times) * 2
     
-    if args.algorithm == 'proposed':
+    if args.algorithm == 'proposed' or args.algorithm == 'pipeline':
         # Sort devices in ascending order of compute times
         sorted_indices = np.argsort(comp_times)
         sorted_times = comp_times[sorted_indices]
@@ -239,7 +239,7 @@ if __name__ == "__main__":
             selected_clients = select_clients_by_utility(feasible_clients)
             # print(f"[Round {round+1}] Utility: {len(selected_clients)} clients selected -> {selected_clients}")
             
-        elif args.algorithm == 'proposed':
+        elif args.algorithm == 'proposed' or args.algorithm == 'pipeline':
             # Pipelined selection: select M clients for each cluster using utility-based method
             selected_clients = []
             cluster_ids = clusters.keys()
@@ -254,7 +254,10 @@ if __name__ == "__main__":
                     continue
                 
                 # Select M clients from this cluster using utility-based selection
-                chosen_indices = select_clients_by_utility(feasible_in_cluster)
+                if args.algorithm == 'proposed':
+                    chosen_indices = select_clients_by_utility(feasible_in_cluster)
+                elif args.algorithm == 'pipeline':
+                    chosen_indices = np.random.choice(feasible_in_cluster, size=M, replace=False).tolist()
                 
                 selected_clients.extend(chosen_indices)
             
