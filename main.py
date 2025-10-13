@@ -82,7 +82,7 @@ if __name__ == "__main__":
 
     comp_times = np.array([device.get_computation_time() for device in iot_devices]).flatten()
     
-    print(f"Computation times: {comp_times}")
+    # print(f"Computation times: {comp_times}")
 
     M = args.subchannels # Number of subchannels
     J = 1  # Number of clusters
@@ -102,7 +102,7 @@ if __name__ == "__main__":
             J_float = (t_max - t_min) / tau
             J = int(np.ceil(J_float)) if J_float > 1 else 1
         
-        print(f"[Latency-Aware Grouping] Computed number of groups J = {J} (tau={tau}, K={args.n_clients})")
+        # print(f"[Latency-Aware Grouping] Computed number of groups J = {J} (tau={tau}, K={args.n_clients})")
         
         # Compute base group size and remainder
         K = args.n_clients
@@ -118,10 +118,10 @@ if __name__ == "__main__":
             clusters[j] = sorted_indices[i:i+n_j].tolist()
             i += n_j
         
-        # Print final clusters
-        for cid, devs in clusters.items():
-            print(f"Group {cid}: {len(devs)} devices -> {devs}")
-            pass
+        # # Print final clusters
+        # for cid, devs in clusters.items():
+        #     print(f"Group {cid}: {len(devs)} devices -> {devs}")
+        #     pass
         
 
     # get model for training
@@ -153,8 +153,8 @@ if __name__ == "__main__":
     cluster_centroids = kmeans.cluster_centers_
     waypoints = np.column_stack([cluster_centroids, np.full(L, 100.0)])  # Add z=100.0 for all waypoints
     
-    print(f"Clustered {len(iot_devices)} IoT devices into {L} clusters")
-    print(f"Waypoints (centroids): {waypoints}")
+    # print(f"Clustered {len(iot_devices)} IoT devices into {L} clusters")
+    # print(f"Waypoints (centroids): {waypoints}")
     
     # Greedy algorithm for waypoint ordering (nearest neighbor)
     def greedy_waypoint_ordering(waypoints):
@@ -181,7 +181,7 @@ if __name__ == "__main__":
     
     # Order waypoints using greedy algorithm
     ordered_waypoints = greedy_waypoint_ordering(waypoints)
-    print(f"Ordered waypoints: {ordered_waypoints}")
+    # print(f"Ordered waypoints: {ordered_waypoints}")
     
     
     epsilon = args.epsilon_start
