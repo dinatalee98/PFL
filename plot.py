@@ -7,16 +7,18 @@ import numpy as np
 from arguments import args_parser
 
 
-def read_metrics(path: str) -> Tuple[List[int], List[float], List[float]]:
+def read_metrics(path: str, max_round: int = None) -> Tuple[List[int], List[float], List[float]]:
     rounds: List[int] = []
     accs: List[float] = []
     losses: List[float] = []
     with open(path, "r", newline="") as f:
         reader = csv.DictReader(f, skipinitialspace=True, restkey="_rest")
         for row in reader:
-            rounds.append(int(row["round"]))
-            accs.append(float(row["test_acc"]))
-            losses.append(float(row["test_loss"]))
+            round_num = int(row["round"])
+            if max_round is None or round_num <= max_round:
+                rounds.append(round_num)
+                accs.append(float(row["test_acc"]))
+                losses.append(float(row["test_loss"]))
     return rounds, accs, losses
 
 
@@ -96,7 +98,7 @@ def main() -> None:
         
         for alg in algs:
             file = f"./{args.result_path}/{args.dataset}_{alg}_{args.n_clients}_{args.beta}_{args.subchannels}_{args.lambda_stale}.txt"
-            rounds, accs, _ = read_metrics(file)
+            rounds, accs, _ = read_metrics(file, args.max_round)
             all_rounds.extend(rounds)
             acc_ma = moving_average(accs, args.window)
             ax.plot(rounds, acc_ma, label=alg.capitalize())
@@ -121,7 +123,7 @@ def main() -> None:
         calculate_enhancements(alg_data)
     else:
         file = f"./{args.result_path}/{args.dataset}_{args.algorithm}_{args.n_clients}_{args.beta}_{args.subchannels}_{args.lambda_stale}.txt"
-        rounds, accs, _ = read_metrics(file)
+        rounds, accs, _ = read_metrics(file, args.max_round)
         base, _ = os.path.splitext(file)
         out_path = base + f"_ma{args.window}.png"
         plot_ma(rounds, accs, args.window, out_path)
