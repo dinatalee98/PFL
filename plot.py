@@ -62,6 +62,17 @@ def calculate_enhancements(alg_data: dict) -> None:
             print(f"Proposed vs {alg_name.capitalize()}: {avg_enhancement:.2f}%")
 
 
+def inspect_target_accuracy(algorithm_name: str, ma_data: list, target_accuracy: float) -> None:
+    for i, acc in enumerate(ma_data):
+        if acc >= target_accuracy:
+            ma_accuracy = acc
+            round_number = i + 1
+            print(f"{algorithm_name}: First round achieving target accuracy is Round {round_number} (MA Accuracy: {ma_accuracy:.3f})")
+            break
+    else:
+        print(f"{algorithm_name}: Target accuracy not achieved within the recorded rounds")
+
+
 def plot_ma(rounds: List[int], accs: List[float], window: int, out_path: str) -> None:
     acc_ma = moving_average(accs, window)
 
@@ -105,6 +116,10 @@ def main() -> None:
             
             # Store raw accuracy data for enhancement calculation
             alg_data[alg] = accs
+            
+            # Inspect target accuracy with moving averaged data if provided
+            if args.target_accuracy is not None:
+                inspect_target_accuracy(alg, acc_ma, args.target_accuracy)
         
         ax.set_xlabel("Round", fontsize=14)
         ax.set_ylabel("Test Accuracy", fontsize=14)
@@ -127,6 +142,10 @@ def main() -> None:
         base, _ = os.path.splitext(file)
         out_path = base + f"_ma{args.window}.png"
         plot_ma(rounds, accs, args.window, out_path)
+        
+        if args.target_accuracy is not None:
+            acc_ma = moving_average(accs, args.window)
+            inspect_target_accuracy(args.algorithm, acc_ma, args.target_accuracy)
 
 
 if __name__ == "__main__":
