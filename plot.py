@@ -97,7 +97,7 @@ def main() -> None:
         alg_data = {}
         
         for alg in algs:
-            file = f"./{args.result_path}/{args.dataset}_{alg}_{args.n_clients}_{args.beta}_{args.subchannels}_{args.lambda_stale}.txt"
+            file = f"./{args.result_path}/{args.dataset}_{alg}_{args.n_clients}_{args.beta}_{args.subchannels}_{args.lr}.txt"
             rounds, accs, _ = read_metrics(file, args.max_round)
             all_rounds.extend(rounds)
             acc_ma = moving_average(accs, args.window)
@@ -115,14 +115,14 @@ def main() -> None:
             ax.set_xlim(min(all_rounds), max(all_rounds))
         
         fig.tight_layout()
-        out_path = f"./{args.result_path}/{args.dataset}_all_{args.n_clients}_{args.beta}_{args.subchannels}_{args.lambda_stale}_ma{args.window}.png"
+        out_path = f"./{args.result_path}/{args.dataset}_all_{args.n_clients}_{args.beta}_{args.subchannels}_{args.lr}_ma{args.window}.png"
         fig.savefig(out_path, dpi=150, bbox_inches='tight')
         plt.close(fig)
         
         # Calculate and print enhancements
         calculate_enhancements(alg_data)
     else:
-        file = f"./{args.result_path}/{args.dataset}_{args.algorithm}_{args.n_clients}_{args.beta}_{args.subchannels}_{args.lambda_stale}.txt"
+        file = f"./{args.result_path}/{args.dataset}_{args.algorithm}_{args.n_clients}_{args.beta}_{args.subchannels}_{args.lr}.txt"
         rounds, accs, _ = read_metrics(file, args.max_round)
         base, _ = os.path.splitext(file)
         out_path = base + f"_ma{args.window}.png"

@@ -70,7 +70,7 @@ if __name__ == "__main__":
     dict_to_device(w_glob, 'cpu')
     
     
-    result_file = open(f"./{result_rootpath}/{args.dataset}_{args.algorithm}_{args.n_clients}_{args.beta}_{args.subchannels}_{args.lambda_stale}.txt", "a")
+    result_file = open(f"./{result_rootpath}/{args.dataset}_{args.algorithm}_{args.n_clients}_{args.beta}_{args.subchannels}_{args.lr}.txt", "a")
     result_file.write(f"round, test_acc, test_loss, selected_clients\n")
 
 
@@ -328,7 +328,7 @@ if __name__ == "__main__":
         del loss_locals
         del c_locals
         
-        lr *= args.lr_decay ** (round // args.lr_decay_step_size)
+        # lr *= args.lr_decay ** (round // args.lr_decay_step_size)
 
         
         # test
