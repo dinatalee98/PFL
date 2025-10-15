@@ -61,7 +61,7 @@ def local_train(args, lr, c_i, c, K, model, dataloader, device):
                 for k, v in model.named_parameters():
                     loss += (0.1 / 2) * (v - prev_param[k]).norm(2)**2
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
             optimizer.step()
             K += 1
             batch_loss += loss.item()
