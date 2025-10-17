@@ -78,9 +78,12 @@ if __name__ == "__main__":
     # Generate IoT device locations randomly in the region (0-400 x 0-400)
     region_data = np.random.uniform(0, 400, (args.n_clients, 2))
 
-    iot_devices = [IoTDevice(x, y, len(dict_users[k]), np.random.uniform(30, 50, 1), args.dataset, args.lambda_stale) for k, (x, y) in enumerate(region_data)]
 
-    comp_times = np.array([device.get_computation_time() for device in iot_devices]).flatten()
+    model_param_count = sum(p.numel() for p in global_model.parameters())
+    model_param_size_bits = model_param_count * 32  # float32 => 32 bits
+    iot_devices = [IoTDevice(x, y, len(dict_users[k]), model_param_size_bits, args.subchannels, args.lambda_stale) for k, (x, y) in enumerate(region_data)]
+
+    comp_times = np.array([device.get_comp_time() for device in iot_devices]).flatten()
     
     # print(f"Computation times: {comp_times}")
 
@@ -193,17 +196,12 @@ if __name__ == "__main__":
         # 1) feasible clients check
         ########################################################################
         feasible_clients = []
-
-        # Example: compute model parameter size (in bits)
-        model_param_count = sum(p.numel() for p in global_model.parameters())
-        model_param_size_bits = model_param_count * 32  # float32 => 32 bits
         
         for k in range(args.n_clients):
-
-            comm_energy = iot_devices[k].get_comm_energy(iot_devices[k].get_commtime(uav_pos, model_param_size_bits, M), uav_pos, model_param_size_bits, M)
+            comm_energy = iot_devices[k].get_comm_energy(uav_pos)
             comp_energy = iot_devices[k].get_comp_energy()
-            battery_ok = (comp_energy + comm_energy >= iot_devices[k].get_battery())
-            comm_ok = (iot_devices[k].get_commtime(uav_pos, model_param_size_bits, M) <= MAX_COMM_TIME)
+            battery_ok = ((comp_energy + comm_energy) <= iot_devices[k].get_battery())
+            comm_ok = (iot_devices[k].get_comm_time(uav_pos) <= MAX_COMM_TIME)
             
             if battery_ok and comm_ok:
                 feasible_clients.append(k)
@@ -224,7 +222,7 @@ if __name__ == "__main__":
                 else:
                     recency_utilities = []
                     for k in feasible_clients:
-                        recency_util = iot_devices[k].compute_utility_with_stale_term(round)
+                        recency_util = iot_devices[k].compute_utility(round)
                         recency_utilities.append(recency_util)
                     
                     recency_utilities = np.array(recency_utilities)
@@ -274,7 +272,7 @@ if __name__ == "__main__":
         
         # Update last selected round for selected clients using IoT device methods
         for k in selected_clients:
-            iot_devices[k].update_selection_round(round)
+            iot_devices[k].last_selected_round = round
         epsilon *= args.epsilon_decay
         epsilon = max(args.epsilon_min, epsilon)
 
@@ -285,7 +283,7 @@ if __name__ == "__main__":
         clients = list(map(int, selected_clients))
 
         for idx, client_idx in enumerate(selected_clients):
-            comm_energy = iot_devices[client_idx].get_comm_energy(iot_devices[client_idx].get_commtime(uav_pos, model_param_size_bits, M))
+            comm_energy = iot_devices[client_idx].get_comm_energy(uav_pos)
             comp_energy = iot_devices[client_idx].get_comp_energy()
             
             iot_devices[client_idx].battery -= (comm_energy + comp_energy)
@@ -321,7 +319,7 @@ if __name__ == "__main__":
             # U_k = iot_devices[client_idx].num_of_data * math.sqrt(loss_square / iot_devices[client_idx].num_of_data)
             # print(f"Round {round+1} Client {client_idx} utility: {U_k}, loss square: {loss_square}")
 
-            iot_devices[client_idx].update_loss_square(loss_square)
+            iot_devices[client_idx].last_loss_square = loss_square
         
         # lr *= args.lr_decay ** (round // args.lr_decay_step_size)
         w_glob, c = aggregate(args, w_locals, w_glob, c, c_locals)
