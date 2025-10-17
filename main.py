@@ -78,7 +78,7 @@ if __name__ == "__main__":
     # Generate IoT device locations randomly in the region (0-400 x 0-400)
     region_data = np.random.uniform(0, 400, (args.n_clients, 2))
 
-    iot_devices = [IoTDevice(x, y, len(dict_users[k]), np.random.uniform(250, 300, 1), args.dataset, args.lambda_stale) for k, (x, y) in enumerate(region_data)]
+    iot_devices = [IoTDevice(x, y, len(dict_users[k]), np.random.uniform(30, 50, 1), args.dataset, args.lambda_stale) for k, (x, y) in enumerate(region_data)]
 
     comp_times = np.array([device.get_computation_time() for device in iot_devices]).flatten()
     
@@ -137,7 +137,6 @@ if __name__ == "__main__":
     # Client selection
     ########################################################################
 
-    MIN_BATTERY = 1.0
     MAX_COMM_TIME = tau
 
 
@@ -200,7 +199,10 @@ if __name__ == "__main__":
         model_param_size_bits = model_param_count * 32  # float32 => 32 bits
         
         for k in range(args.n_clients):
-            battery_ok = (iot_devices[k].get_battery() >= MIN_BATTERY)
+
+            comm_energy = iot_devices[k].get_comm_energy(iot_devices[k].get_commtime(uav_pos, model_param_size_bits, M), uav_pos, model_param_size_bits, M)
+            comp_energy = iot_devices[k].get_comp_energy()
+            battery_ok = (comp_energy + comm_energy >= iot_devices[k].get_battery())
             comm_ok = (iot_devices[k].get_commtime(uav_pos, model_param_size_bits, M) <= MAX_COMM_TIME)
             
             if battery_ok and comm_ok:

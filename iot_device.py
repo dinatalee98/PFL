@@ -13,8 +13,9 @@ class IoTDevice:
         self.battery = b
         self.comm_power = 10  #10 ~ 30 dBm
         self.dataset = dataset
-        self.c_k = 1e7             # cycles per sample
+        self.c_k = 10             # cycles per sample
         self.f_k = np.random.uniform(1e9, 2e9)            # CPU frequency (Hz)
+        self.b_k = 10e6  # bandwidth per device
         self.last_selected_round = -1  # Track when this device was last selected
         self.last_loss_square = 0.0  # Store the last round's loss square value
         self.lambda_stale = lambda_stale  # UCB temporal bonus coefficient (set from args)
@@ -135,30 +136,40 @@ class IoTDevice:
         if R_k is in bits/s
         """
         device_pos = self.get_location()
-        b_k = 50e6 / M # 10 MHz bandwidth
+        b_k = self.b_k / M # 10 MHz bandwidth
         p_k = self.comm_power
         R_k = self.achievable_rate(uav_pos, device_pos, p_k, b_k)
         if R_k < 1e-12:
             return 1e9  # effectively infinite time
         return data_size_bits / R_k
     
-    def get_comm_energy(self, t_comm):
+    def get_comm_energy(self, t_comm, uav_pos, data_size_bits, M):
         """
-        E_k^{comm} = p_k * t_k^{comm}, ignoring the formula for power control from the text
-        for brevity. If you want the exact formula from the text:
-        E_k^{comm} = (t^{comm}_k * sigma^2 / |h_k|^2 ) * (2^( (a_k*s)/(b_k*t^{comm}_k )) - 1)
-        This code uses a simpler approach: E = P * time. Replace as needed.
+        E_k^{comm} = (t^{comm}_k * sigma^2 / |h_k|^2) * (2^( (a_k*s)/(b_k*t^{comm}_k )) - 1)
+        where:
+        - t^{comm}_k: communication time
+        - sigma^2: noise power
+        - |h_k|^2: channel gain
+        - a_k: data size in bits
+        - s: data size in bits (same as a_k)
+        - b_k: bandwidth
         """
-        p_k = self.comm_power
-        return p_k * t_comm
+        device_pos = self.get_location()
+        h_k_squared = self.channel_gain(uav_pos, device_pos)
+        
+        sigma2_DB = -110  # noise floor in dBm
+        sigma2 = 10**(sigma2_DB / 10)  # convert to linear scale
+
+        b_k = self.b_k / M # 10 MHz bandwidth
+        
+        return (t_comm * sigma2 / h_k_squared) * (2**(data_size_bits / (b_k * t_comm)) - 1)
 
     def get_comp_energy(self):
         """
-        E_k^{comp} = a_k * alpha_k/2 * c_k * D_k * f_k^2
-        For simplicity, assume a_k=1 always if computing. We incorporate alpha_k/2 in code directly.
+        E_k^{comp} = rho_k/2 * c_k * D_k * f_k^2
         """
-        alpha_k = 1e-28       # effective capacitance coefficient * 2 (splitting the factor in the code)
-        return (alpha_k * self.c_k * self.num_of_data * (self.f_k**2)) / 2.0
+        rho_k = 1e-28       # effective capacitance coefficient
+        return (rho_k / 2.0) * self.c_k * self.num_of_data * (self.f_k**2)
     
 
 
