@@ -81,7 +81,7 @@ if __name__ == "__main__":
 
     model_param_count = sum(p.numel() for p in global_model.parameters())
     model_param_size_bits = model_param_count * 32  # float32 => 32 bits
-    iot_devices = [IoTDevice(x, y, len(dict_users[k]), model_param_size_bits, args.subchannels, args.lambda_stale) for k, (x, y) in enumerate(region_data)]
+    iot_devices = [IoTDevice(x, y, len(dict_users[k]), model_param_size_bits, args.subchannels, args.lambda_stale, args.local_ep) for k, (x, y) in enumerate(region_data)]
 
     comp_times = np.array([device.get_comp_time() for device in iot_devices]).flatten()
     

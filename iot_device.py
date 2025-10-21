@@ -1,19 +1,20 @@
 import numpy as np
 import math
 
-class IoTDevice:    
-    def __init__(self, x, y, D_k, model_param_size_bits, M, lambda_stale):
+class IoTDevice:
+    def __init__(self, x, y, D_k, model_param_size_bits, M, lambda_stale, local_epochs):
         self.x = x
         self.y = y
         self.num_of_data = D_k
         self.battery = np.random.uniform(30, 50, 1)
         self.comm_power = 10  #10 ~ 30 dBm
-        self.c_k = 10             # cycles per sample
+        self.c_k = 3*10**4          # cycles per sample
         self.f_k = np.random.uniform(1e9, 2e9)            # CPU frequency (Hz)
         self.b_k = 10e6 / M  # bandwidth per device
         self.sigma2_dB = -110  # noise power (dBm)
         self.model_param_size_bits = model_param_size_bits
-
+        self.local_epochs = local_epochs
+        
         self.last_selected_round = -1  # Track when this device was last selected
         self.last_loss_square = 0.0  # Store the last round's loss square value
         self.lambda_stale = lambda_stale  # UCB temporal bonus coefficient (set from args)
@@ -51,7 +52,8 @@ class IoTDevice:
         """
         channel_gain = self.channel_gain(uav_pos)
         sigma2 = 10**(self.sigma2_dB / 10)
-        snr = self.comm_power * channel_gain / sigma2
+        comm_power_linear = 10**(self.comm_power / 10)
+        snr = comm_power_linear * channel_gain / sigma2
         return self.b_k * math.log2(1.0 + snr)
     
     def get_comm_time(self, uav_pos):
@@ -63,7 +65,7 @@ class IoTDevice:
         return self.model_param_size_bits / R_k
     
     def get_comp_time(self):
-        return (self.c_k * self.num_of_data) / self.f_k
+        return (self.c_k * self.num_of_data * self.local_epochs) / self.f_k
 
     def get_comm_energy(self, uav_pos):
         """
