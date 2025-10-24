@@ -23,8 +23,11 @@ def main() -> None:
     plt.rcParams['xtick.labelsize'] = 22
     plt.rcParams['ytick.labelsize'] = 22
     plt.rcParams['legend.fontsize'] = 20
-
-    df = pd.read_csv(f"./results/{args.dataset}_{args.n_clients}_{args.subchannels}.csv")
+    
+    df = pd.read_csv(f"./{args.result_path}/{args.dataset}_{args.n_clients}_{args.subchannels}.csv")
+    
+    if args.max_round is not None:
+        df = df[df['round'] <= args.max_round]
         
     fig, ax = plt.subplots(1, 1, figsize=(8, 6), dpi=300)
 
@@ -46,7 +49,7 @@ def main() -> None:
         ax.set_xlim(0, df['round'].max())
 
     fig.subplots_adjust(left=0.1, right=0.98, top=0.95, bottom=0.12)
-    fig.savefig(f"./results/{args.dataset}_{args.n_clients}_{args.subchannels}.png", dpi=300, bbox_inches='tight')
+    fig.savefig(f"./{args.result_path}/{args.dataset}_{args.n_clients}_{args.subchannels}.png", dpi=300, bbox_inches='tight')
     plt.close(fig)
 
 
