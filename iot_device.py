@@ -94,24 +94,28 @@ class IoTDevice:
 
     def compute_utility(self, current_round):
         """
-        Compute utility using the formula:
-        U_k = D_k * sqrt((1/D_k) * sum(l^2(x_ki, y_ki))) + lambda * Delta_t_k
-        
+        Compute UCB-style saturated utility:
+        U_k(r) = D_k * sqrt((1/D_k) * sum(l^2(x_ki, y_ki))) 
+                + lambda * sqrt((log r) * (delta / (1 + delta)))
+
         where:
-        - D_k is the number of data samples
-        - sum(l^2(x_ki, y_ki)) is the sum of squared losses from last round
-        - Delta_t_k = current_round - last_selected_round (stale rounds)
-        - lambda is the stale term weight (stored as self.lambda_stale)
+        - D_k: number of data samples
+        - last_loss_square: sum of squared losses from last round
+        - delta = current_round - last_selected_round (staleness)
+        - lambda: stale term weight (self.lambda_stale)
         """
         D_k = self.num_of_data
+        current_round = current_round + 1  # round index shift (1-based)
         
-        # UCB-style temporal bonus using staleness s
-        if self.last_selected_round >= 0:
-            s = max(0, current_round - self.last_selected_round)
-        else:
-            s = current_round + 1
-        temporal_bonus = self.lambda_stale * math.sqrt(math.log(max(2, current_round + 1)) / (1 + s))
+        # Calculate staleness delta_k(r)
+        delta = current_round - self.last_selected_round
         
+        # Saturated UCB-style temporal bonus
+        temporal_bonus = self.lambda_stale * math.sqrt(
+            math.log(current_round) * (delta / (1.0 + delta))
+        )
+        
+        # Main utility (performance + exploration bonus)
         utility = D_k * math.sqrt(self.last_loss_square / D_k) + temporal_bonus
-            
+        
         return utility
