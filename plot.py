@@ -3,6 +3,13 @@ import pandas as pd
 from arguments import args_parser
 
 
+ALGORITHMS = {
+    "PUFL": "proposed",
+    "PA": "pipeline",
+    "UBS": "utility",
+    "FedAvg": "random"
+}
+
 def inspect_target_accuracy(algorithm_name: str, ma_data: list, target_accuracy: float) -> None:
     for i, acc in enumerate(ma_data):
         if acc >= target_accuracy:
@@ -24,15 +31,15 @@ def main() -> None:
     plt.rcParams['ytick.labelsize'] = 22
     plt.rcParams['legend.fontsize'] = 20
     
-    df = pd.read_csv(f"./{args.result_path}/{args.dataset}_{args.n_clients}_{args.subchannels}.csv")
+    df = pd.read_csv(f"./{args.source_folder}/{args.dataset}_{args.n_clients}_{args.subchannels}.csv")
     
     if args.max_round is not None:
         df = df[df['round'] <= args.max_round]
         
     fig, ax = plt.subplots(1, 1, figsize=(8, 6), dpi=300)
 
-    for alg_name in ["proposed", "pipeline", "utility", "random"]:
-        ax.plot(df['round'], df[alg_name], label=alg_name.capitalize(), linewidth=2.0)
+    for alg_name in ALGORITHMS.keys():
+        ax.plot(df['round'], df[ALGORITHMS[alg_name]], label=alg_name, linewidth=2.0)
         
         if args.target_accuracy is not None:
             inspect_target_accuracy(alg_name, df[alg_name].tolist(), args.target_accuracy)
