@@ -1,11 +1,12 @@
 import matplotlib.pyplot as plt
 import pandas as pd
+import os
 from arguments import args_parser
 
 
 ALGORITHMS = {
     "PUFL": "proposed",
-    "PA": "pipeline",
+    "PT": "pipeline",
     "UBS": "utility",
     "FedAvg": "random"
 }
@@ -23,6 +24,9 @@ def inspect_target_accuracy(algorithm_name: str, ma_data: list, target_accuracy:
 
 def main() -> None:
     args = args_parser()
+    
+    if not os.path.exists(args.result_path):
+        os.makedirs(args.result_path)
 
     plt.rcParams['font.family'] = 'Times New Roman'
     plt.rcParams['font.size'] = 26
@@ -56,7 +60,7 @@ def main() -> None:
         ax.set_xlim(0, df['round'].max())
 
     fig.subplots_adjust(left=0.1, right=0.98, top=0.95, bottom=0.12)
-    fig.savefig(f"./{args.result_path}/{args.dataset}_{args.n_clients}_{args.subchannels}.png", dpi=300, bbox_inches='tight')
+    fig.savefig(f"./{args.result_path}/{args.dataset}_{args.n_clients}_{args.subchannels}.pdf", bbox_inches='tight')
     plt.close(fig)
 
 
