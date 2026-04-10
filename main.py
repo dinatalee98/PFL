@@ -70,7 +70,7 @@ if __name__ == "__main__":
     dict_to_device(w_glob, 'cpu')
     
     
-    result_file = open(f"./{result_rootpath}/{args.dataset}_{args.algorithm}_{args.n_clients}_{args.beta}_{args.subchannels}_{args.lr}_{args.seed}.txt", "a")
+    result_file = open(f"./{result_rootpath}/{args.dataset}_{args.algorithm}_{args.n_clients}_{args.beta}_{args.subchannels}_{args.lr}_{args.lambda_stale}_{args.seed}.txt", "a")
     result_file.write(f"round, test_acc, test_loss, selected_clients\n")
 
 

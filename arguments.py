@@ -42,6 +42,13 @@ def args_parser():
     parser.add_argument('--epsilon_decay', type=float, default=0.98, help='epsilon decay per round')
     parser.add_argument('--epsilon_min', type=float, default=0.2, help='minimum epsilon')
     parser.add_argument('--lambda_stale', type=float, default=0.2, help='lambda stale term weight')
+    parser.add_argument(
+        '--lambda_stale_values',
+        type=float,
+        nargs='+',
+        default=None,
+        help='specific lambda_stale values to plot (e.g. --lambda_stale_values 0.0 0.1 0.2)',
+    )
     parser.add_argument('--max_round', type=int, default=None, help='maximum round to plot (default: plot all rounds)')
     parser.add_argument('--target_accuracy', type=float, default=None, help='target accuracy to inspect (default: None)')
     args = parser.parse_args()
