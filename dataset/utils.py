@@ -224,7 +224,7 @@ def sampling_dirichlet(dataset, num_users, beta=0.2):
     return dict_users
 """
 
-def sampling_dirichlet(dataset, num_users, beta=0.2):
+def sampling_dirichlet(dataset, num_users, beta=0.2, max_iter=1000, min_samples=1):
     """
     dirichlet sampling
     :param dataset:
@@ -232,9 +232,12 @@ def sampling_dirichlet(dataset, num_users, beta=0.2):
     :param beta:
     :return: dict of image index
     """
-    min_size = 0
     labels = np.array(dataset.targets)
-    while min_size < 10:
+    min_size = 0
+    best_dict_users = None
+    best_min_size = -1
+
+    for attempt in range(max_iter):
         dict_users = {i: set() for i in range(num_users)}
         for indices in [(labels == l).nonzero()[0] for l in np.unique(labels)]:
             indices = indices[np.random.permutation(len(indices))]
@@ -242,12 +245,21 @@ def sampling_dirichlet(dataset, num_users, beta=0.2):
             proportions = np.zeros(num_users)
             for i in range(num_users):
                 proportions[i] = p[i] * (len(dict_users[i]) < (len(labels) / num_users))
-            proportions = proportions / proportions.sum()
+            p_sum = proportions.sum()
+            if p_sum == 0:
+                continue
+            proportions = proportions / p_sum
             proportions = (np.cumsum(proportions) * len(indices)).astype(int)[:-1]
             splitted_indices = np.split(indices, proportions)
             for i in range(num_users):
                 dict_users[i].update(splitted_indices[i])
-        min_size = min([len(indices) for indices in dict_users.values()])
-    if dict_users == {}:
+        min_size = min([len(v) for v in dict_users.values()])
+        if best_min_size < min_size:
+            best_min_size = min_size
+            best_dict_users = dict_users
+        if min_size >= min_samples:
+            break
+
+    if best_dict_users is None:
         return "Error"
-    return dict_users
+    return best_dict_users
