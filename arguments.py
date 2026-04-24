@@ -51,6 +51,7 @@ def args_parser():
     )
     parser.add_argument('--max_round', type=int, default=None, help='maximum round to plot (default: plot all rounds)')
     parser.add_argument('--target_accuracy', type=float, default=None, help='target accuracy to inspect (default: None)')
+    parser.add_argument('--tau', type=float, default=0.1)
     args = parser.parse_args()
     return args
 

@@ -29,7 +29,7 @@ def dict_to_device(dict, device):
 
 if __name__ == "__main__":
     args = args_parser()
-    print(f"> Settings: n_clients={args.n_clients}, algorithm={args.algorithm}, dataset={args.dataset}, beta={args.beta}, subchannels={args.subchannels}, epochs={args.epochs}, localep={args.local_ep}")
+    print(f"> Settings: n_clients={args.n_clients}, algorithm={args.algorithm}, dataset={args.dataset}, beta={args.beta}, subchannels={args.subchannels}, epochs={args.epochs}, localep={args.local_ep}, lambda_stale={args.lambda_stale}, tau={args.tau}")
     
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
@@ -70,7 +70,7 @@ if __name__ == "__main__":
     dict_to_device(w_glob, 'cpu')
     
     
-    result_file = open(f"./{result_rootpath}/{args.dataset}_{args.algorithm}_{args.n_clients}_{args.beta}_{args.subchannels}_{args.lr}_{args.lambda_stale}_{args.seed}.txt", "a")
+    result_file = open(f"./{result_rootpath}/{args.dataset}_{args.algorithm}_{args.n_clients}_{args.beta}_{args.subchannels}_{args.lr}_{args.lambda_stale}_{args.tau}_{args.seed}.txt", "a")
     result_file.write(f"round, test_acc, test_loss, selected_clients\n")
 
 
@@ -89,9 +89,6 @@ if __name__ == "__main__":
 
     M = args.subchannels # Number of subchannels
     J = 1  # Number of clusters
-
-    tau = np.std(comp_times) * 2
-    
     if args.algorithm == 'proposed' or args.algorithm == 'pipeline':
         # Sort devices in ascending order of compute times
         sorted_indices = np.argsort(comp_times)
@@ -99,10 +96,10 @@ if __name__ == "__main__":
         
         # Determine number of groups J using equation (2)
         t_min, t_max = np.min(sorted_times), np.max(sorted_times)
-        if tau <= 0:
+        if args.tau <= 0:
             J = 1
         else:
-            J_float = (t_max - t_min) / tau
+            J_float = (t_max - t_min) / args.tau
             J = int(np.ceil(J_float)) if J_float > 1 else 1
         
         # print(f"[Latency-Aware Grouping] Computed number of groups J = {J} (tau={tau}, K={args.n_clients})")
@@ -140,7 +137,7 @@ if __name__ == "__main__":
     # Client selection
     ########################################################################
 
-    MAX_COMM_TIME = tau
+    MAX_COMM_TIME = args.tau
 
 
     # Cluster IoT devices by geographical location using K-means
