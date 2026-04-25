@@ -6,7 +6,7 @@ class IoTDevice:
         self.x = x
         self.y = y
         self.num_of_data = D_k
-        self.battery = np.random.uniform(300, 500, 1)
+        self.battery = 5000
         self.comm_power = 10  #10 ~ 30 dBm
         self.c_k = c_k          # cycles per sample
         self.f_k = np.random.uniform(1e9, 2e9)            # CPU frequency (Hz)
