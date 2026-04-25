@@ -29,7 +29,6 @@ def greedy_waypoint_ordering(waypoints):
 
 if __name__ == "__main__":
     args = args_parser()
-    print(f"> Settings: n_clients={args.n_clients}, algorithm={args.algorithm}, dataset={args.dataset}, beta={args.beta}, subchannels={args.subchannels}, epochs={args.epochs}, localep={args.local_ep}, lambda_stale={args.lambda_stale}, tau={args.tau}")
 
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
@@ -67,6 +66,7 @@ if __name__ == "__main__":
     M = args.subchannels
 
     clusters = {}
+    J = 0
     if args.algorithm == "proposed" or args.algorithm == "pipeline":
         sorted_indices = np.argsort(comp_times)
         sorted_times = comp_times[sorted_indices]
@@ -89,14 +89,13 @@ if __name__ == "__main__":
     device_locations = np.array([[device.x, device.y] for device in iot_devices])
     L = args.n_clusters
     kmeans = KMeans(n_clusters=L, random_state=args.seed, n_init=10)
-    cluster_labels = kmeans.fit_predict(device_locations)
+    kmeans.fit_predict(device_locations)
     cluster_centroids = kmeans.cluster_centers_
     waypoints = np.column_stack([cluster_centroids, np.full(L, 100.0)])
     ordered_waypoints = greedy_waypoint_ordering(waypoints)
 
-    result_file = open(f"./{result_rootpath}/{args.dataset}_{args.algorithm}_{args.n_clients}_{args.beta}_{args.subchannels}_{args.lr}_{args.lambda_stale}_{args.tau}_{args.seed}_selection_inspection.txt", "a")
-    result_file.write("round, selected_clients_count, selected_clients\n")
     epsilon = args.epsilon_start
+    selected_client_counts = []
 
     def select_clients_by_utility(available_clients, current_round):
         if len(available_clients) >= M:
@@ -147,8 +146,11 @@ if __name__ == "__main__":
             iot_devices[k].last_selected_round = round + 1
         epsilon *= args.epsilon_decay
         epsilon = max(args.epsilon_min, epsilon)
+        selected_client_counts.append(len(selected_clients))
 
-        result_file.write(f"{round + 1}, {len(selected_clients)}, {selected_clients}\n")
-        result_file.flush()
-
-    result_file.close()
+    avg_selected_clients = float(np.mean(selected_client_counts)) if selected_client_counts else 0
+    print(
+        f"settings: dataset={args.dataset}, device_number={args.n_clients}, "
+        f"subchannel_number={args.subchannels}, tau={args.tau}, seed={args.seed}"
+    )
+    print(f"J={J}, avg_selected_clients={avg_selected_clients}")
