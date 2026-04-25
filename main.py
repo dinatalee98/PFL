@@ -77,11 +77,11 @@ if __name__ == "__main__":
     # set iot devices
     # Generate IoT device locations randomly in the region (0-400 x 0-400)
     region_data = np.random.uniform(0, 400, (args.n_clients, 2))
-
+    c_k = 3*3*10**4 if args.dataset == 'cifar10' else 3*10**4
 
     model_param_count = sum(p.numel() for p in global_model.parameters())
     model_param_size_bits = model_param_count * 32  # float32 => 32 bits
-    iot_devices = [IoTDevice(x, y, len(dict_users[k]), model_param_size_bits, args.subchannels, args.lambda_stale, args.local_ep) for k, (x, y) in enumerate(region_data)]
+    iot_devices = [IoTDevice(x, y, len(dict_users[k]), c_k, model_param_size_bits, args.subchannels, args.lambda_stale, args.local_ep) for k, (x, y) in enumerate(region_data)]
 
     comp_times = np.array([device.get_comp_time() for device in iot_devices]).flatten()
     

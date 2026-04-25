@@ -2,13 +2,13 @@ import numpy as np
 import math
 
 class IoTDevice:
-    def __init__(self, x, y, D_k, model_param_size_bits, M, lambda_stale, local_epochs):
+    def __init__(self, x, y, D_k, c_k, model_param_size_bits, M, lambda_stale, local_epochs):
         self.x = x
         self.y = y
         self.num_of_data = D_k
         self.battery = np.random.uniform(300, 500, 1)
         self.comm_power = 10  #10 ~ 30 dBm
-        self.c_k = 3*10**4          # cycles per sample
+        self.c_k = c_k          # cycles per sample
         self.f_k = np.random.uniform(1e9, 2e9)            # CPU frequency (Hz)
         self.b_k = 10e6 / M  # bandwidth per device
         self.sigma2_dB = -110  # noise power (dBm)
