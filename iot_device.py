@@ -10,7 +10,7 @@ class IoTDevice:
         self.comm_power = 10  #10 ~ 30 dBm
         self.c_k = c_k          # cycles per sample
         self.f_k = np.random.uniform(1e9, 2e9)            # CPU frequency (Hz)
-        self.b_k = 10e6 / M  # bandwidth per device
+        self.b_k = 10e6  # bandwidth per device
         self.sigma2_dB = -110  # noise power (dBm)
         self.model_param_size_bits = model_param_size_bits
         self.local_epochs = local_epochs
