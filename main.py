@@ -70,10 +70,6 @@ if __name__ == "__main__":
     dict_to_device(w_glob, 'cpu')
     
     
-    result_file = open(f"./{result_rootpath}/{args.dataset}_{args.algorithm}_{args.n_clients}_{args.beta}_{args.subchannels}_{args.lr}_{args.lambda_stale}_{args.tau}_{args.seed}.txt", "a")
-    result_file.write(f"round, test_acc, test_loss, selected_clients\n")
-
-
     # set iot devices
     # Generate IoT device locations randomly in the region (0-400 x 0-400)
     region_data = np.random.uniform(0, 400, (args.n_clients, 2))
@@ -183,6 +179,68 @@ if __name__ == "__main__":
     # print(f"Ordered waypoints: {ordered_waypoints}")
     
     
+    result_file = open(f"./{result_rootpath}/{args.dataset}_{args.algorithm}_{args.n_clients}_{args.beta}_{args.subchannels}_{args.lr}_{args.lambda_stale}_{args.tau}_{args.seed}.txt", "a")
+    result_file.write("round, selected_clients\n")
+    epsilon = args.epsilon_start
+
+    def select_clients_by_utility(available_clients, current_round):
+        if len(available_clients) >= M:
+            if np.random.rand() > epsilon:
+                return np.random.choice(available_clients, size=M, replace=False).tolist()
+            recency_utilities = []
+            for k in available_clients:
+                recency_utilities.append(iot_devices[k].compute_utility(current_round))
+            recency_utilities = np.array(recency_utilities)
+            sorted_indices = np.argsort(recency_utilities)[::-1]
+            top_m_indices = sorted_indices[:M]
+            return [available_clients[idx] for idx in top_m_indices]
+        return available_clients.copy()
+
+    for round in range(args.epochs):
+        waypoint_index = round % len(ordered_waypoints)
+        uav_pos = ordered_waypoints[waypoint_index].copy()
+        communication_available_clients = []
+        for k in range(args.n_clients):
+            comm_ok = (iot_devices[k].get_comm_time(uav_pos) <= MAX_COMM_TIME)
+            if comm_ok:
+                communication_available_clients.append(k)
+
+        if args.algorithm == 'utility':
+            selected_clients = select_clients_by_utility(communication_available_clients, round)
+        elif args.algorithm == 'proposed' or args.algorithm == 'pipeline':
+            selected_clients = []
+            for cid in clusters.keys():
+                cluster_indices = clusters[cid]
+                available_in_cluster = list(set(cluster_indices).intersection(communication_available_clients))
+                if len(available_in_cluster) == 0:
+                    continue
+                if args.algorithm == 'proposed':
+                    chosen_indices = select_clients_by_utility(available_in_cluster, round)
+                else:
+                    if len(available_in_cluster) >= M:
+                        chosen_indices = np.random.choice(available_in_cluster, size=M, replace=False).tolist()
+                    else:
+                        chosen_indices = available_in_cluster.copy()
+                selected_clients.extend(chosen_indices)
+        else:
+            if len(communication_available_clients) >= M:
+                selected_clients = np.random.choice(communication_available_clients, size=M, replace=False).tolist()
+            else:
+                selected_clients = communication_available_clients.copy()
+
+        for k in selected_clients:
+            iot_devices[k].last_selected_round = round + 1
+        epsilon *= args.epsilon_decay
+        epsilon = max(args.epsilon_min, epsilon)
+
+        result_file.write(f"{round+1}, {len(selected_clients)}\n")
+        result_file.flush()
+    result_file.close()
+    raise SystemExit(0)
+
+    result_file = open(f"./{result_rootpath}/{args.dataset}_{args.algorithm}_{args.n_clients}_{args.beta}_{args.subchannels}_{args.lr}_{args.lambda_stale}_{args.tau}_{args.seed}.txt", "a")
+    result_file.write(f"round, test_acc, test_loss, selected_clients\n")
+
     epsilon = args.epsilon_start
     for round in tqdm(range(args.epochs), dynamic_ncols=True):
         # Move UAV to waypoints in order using greedy algorithm
