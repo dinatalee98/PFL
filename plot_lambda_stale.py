@@ -1,12 +1,8 @@
 import ast
 import os
-import re
 from collections import Counter
 from dataclasses import dataclass
 
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
 
 
@@ -19,31 +15,32 @@ class RunKey:
     subchannels: int
     lr: float
     lambda_stale: float
+    tau: float | None
     seed: int
 
 
-FILENAME_RE = re.compile(
-    r"^(?P<dataset>[^_]+)_(?P<algorithm>[^_]+)_(?P<n_clients>\d+)"
-    r"_(?P<beta>-?\d+(?:\.\d+)?)_(?P<subchannels>\d+)"
-    r"_(?P<lr>-?\d+(?:\.\d+)?)_(?P<lambda_stale>-?\d+(?:\.\d+)?)_(?P<seed>\d+)\.txt$"
-)
-
-
 def parse_run_key(filename: str) -> RunKey | None:
-    m = FILENAME_RE.match(filename)
-    if not m:
+    if not filename.endswith(".txt"):
         return None
-    g = m.groupdict()
-    return RunKey(
-        dataset=g["dataset"],
-        algorithm=g["algorithm"],
-        n_clients=int(g["n_clients"]),
-        beta=float(g["beta"]),
-        subchannels=int(g["subchannels"]),
-        lr=float(g["lr"]),
-        lambda_stale=float(g["lambda_stale"]),
-        seed=int(g["seed"]),
-    )
+    parts = filename[:-4].split("_")
+    if len(parts) != 9:
+        return None
+    dataset, algorithm, n_clients, beta, subchannels, lr, lambda_stale, tau, seed = parts
+    try:
+        parsed_tau = None if tau.lower() in {"none", "null"} else float(tau)
+        return RunKey(
+            dataset=dataset,
+            algorithm=algorithm,
+            n_clients=int(n_clients),
+            beta=float(beta),
+            subchannels=int(subchannels),
+            lr=float(lr),
+            lambda_stale=float(lambda_stale),
+            tau=parsed_tau,
+            seed=int(seed),
+        )
+    except ValueError:
+        return None
 
 
 def read_round_acc(path: str, max_round: int | None) -> tuple[list[int], list[float], Counter]:
@@ -103,38 +100,23 @@ def is_selected_lambda(value: float, selected: list[float] | None, atol: float =
     return any(abs(value - target) <= atol for target in selected)
 
 
-def mean_curves(all_rounds: list[list[int]], all_accs: list[list[float]]) -> tuple[list[int], list[float]]:
-    if not all_rounds:
-        return [], []
-    if len(all_rounds) == 1:
-        return all_rounds[0], all_accs[0]
-    common = sorted(set(all_rounds[0]).intersection(*[set(r) for r in all_rounds[1:]]))
-    if not common:
-        common = sorted(set(all_rounds[0]))
-        all_interp = []
-        for rs, ac in zip(all_rounds, all_accs):
-            interp = np.interp(common, rs, ac).tolist()
-            all_interp.append(interp)
-    else:
-        all_interp = []
-        for rs, ac in zip(all_rounds, all_accs):
-            idx_map = {r: a for r, a in zip(rs, ac)}
-            all_interp.append([idx_map[r] for r in common])
-    avg = np.mean(all_interp, axis=0).tolist()
-    return common, avg
+def mean_std(values: list[float]) -> tuple[float, float]:
+    if not values:
+        return float("nan"), float("nan")
+    return float(np.nanmean(values)), float(np.nanstd(values))
 
 
 def main() -> None:
     from arguments import args_parser
     args = args_parser()
 
-    out = getattr(args, "out", None)
     root = getattr(args, "source_folder", None) or getattr(args, "result_path", "result")
     selected_lambdas = getattr(args, "lambda_stale_values", [])
+    w = max(1, int(getattr(args, "window", 100) or 100))
     if not os.path.isdir(root):
         raise SystemExit(f"result_path not found: {root}")
 
-    series: dict[float, list[tuple[list[int], list[float], RunKey, Counter]]] = {}
+    series: dict[float, dict[int, list[tuple[list[int], list[float], RunKey, Counter]]]] = {}
     for name in os.listdir(root):
         key = parse_run_key(name)
         if key is None:
@@ -151,6 +133,8 @@ def main() -> None:
             continue
         if args.lr is not None and key.lr != args.lr:
             continue
+        if args.tau is not None and key.tau is not None and abs(key.tau - args.tau) > 1e-12:
+            continue
         if not is_selected_lambda(key.lambda_stale, selected_lambdas):
             continue
 
@@ -158,58 +142,47 @@ def main() -> None:
         rounds, accs, participation = read_round_acc(path, args.max_round)
         if not rounds:
             continue
-        series.setdefault(key.lambda_stale, []).append((rounds, accs, key, participation))
+        by_lambda = series.setdefault(key.lambda_stale, {})
+        by_lambda.setdefault(key.seed, []).append((rounds, accs, key, participation))
 
     if not series:
         raise SystemExit("no matching result files found")
 
     keys_sorted = sorted(series.keys())
-    print("lambda_stale\tseeds\tAUC (mean±std)\t\tJain_Fairness (mean±std)")
+    print("lambda_stale\tseeds\tAUC (mean±std)\t\tJain_Fairness (mean±std)\tFinal_MA_Acc (mean±std)")
     for lam in keys_sorted:
-        entries = series[lam]
+        seed_groups = series[lam]
         aucs = []
         jfis = []
-        for rounds, accs, key, participation in entries:
-            if len(rounds) >= 2:
-                auc = float(np.trapezoid(accs, rounds) if hasattr(np, "trapezoid") else np.trapz(accs, rounds))
-            else:
-                auc = float("nan")
-            jfi = jain_fairness(participation, key.n_clients)
-            aucs.append(auc)
-            jfis.append(jfi)
-        mean_auc = float(np.nanmean(aucs))
-        std_auc = float(np.nanstd(aucs))
-        mean_jfi = float(np.nanmean(jfis))
-        std_jfi = float(np.nanstd(jfis))
-        print(f"{lam:g}\t{len(entries)}\t{mean_auc:.4f}±{std_auc:.4f}\t\t{mean_jfi:.6f}±{std_jfi:.6f}")
-
-    first_key = series[keys_sorted[0]][0][2]
-    title_bits = [f"{first_key.dataset}", f"{first_key.algorithm}", f"K={first_key.n_clients}", f"beta={first_key.beta}", f"M={first_key.subchannels}", f"lr={first_key.lr}"]
-    title_bits.append(f"seeds={len(series[keys_sorted[0]])}")
-
-    plt.figure(figsize=(10, 6))
-    for lam in keys_sorted:
-        entries = series[lam]
-        all_rounds = [e[0] for e in entries]
-        all_accs = [e[1] for e in entries]
-        avg_rounds, avg_accs = mean_curves(all_rounds, all_accs)
-        w = int(getattr(args, "window", 1) or 1)
-        smoothed = moving_average(avg_accs, w)
-        x = avg_rounds if len(smoothed) == len(avg_accs) else avg_rounds[w - 1 :]
-        plt.plot(x, smoothed, linewidth=2, label=f"lambda_stale={lam:g}")
-
-    plt.xlabel("round")
-    plt.ylabel("test accuracy")
-    plt.title(" | ".join(title_bits))
-    plt.grid(True, linestyle="--", alpha=0.4)
-    plt.legend()
-    plt.tight_layout()
-
-    if out is None:
-        out = os.path.join(root, "lambda_stale_plot.png")
-    plt.savefig(out, dpi=200)
-    print(out)
-
+        final_ma_accs = []
+        for seed_entries in seed_groups.values():
+            seed_aucs = []
+            seed_jfis = []
+            seed_final_ma_accs = []
+            for rounds, accs, key, participation in seed_entries:
+                if len(rounds) >= 2:
+                    auc = float(np.trapezoid(accs, rounds) if hasattr(np, "trapezoid") else np.trapz(accs, rounds))
+                else:
+                    auc = float("nan")
+                jfi = jain_fairness(participation, key.n_clients)
+                smoothed_accs = moving_average(accs, w)
+                final_ma_acc = float(smoothed_accs[-1]) if smoothed_accs else float("nan")
+                seed_aucs.append(auc)
+                seed_jfis.append(jfi)
+                seed_final_ma_accs.append(final_ma_acc)
+            seed_mean_auc, _ = mean_std(seed_aucs)
+            seed_mean_jfi, _ = mean_std(seed_jfis)
+            seed_mean_final_ma_acc, _ = mean_std(seed_final_ma_accs)
+            aucs.append(seed_mean_auc)
+            jfis.append(seed_mean_jfi)
+            final_ma_accs.append(seed_mean_final_ma_acc)
+        mean_auc, std_auc = mean_std(aucs)
+        mean_jfi, std_jfi = mean_std(jfis)
+        mean_final_ma_acc, std_final_ma_acc = mean_std(final_ma_accs)
+        print(
+            f"{lam:g}\t{len(seed_groups)}\t{mean_auc:.4f}±{std_auc:.4f}\t\t"
+            f"{mean_jfi:.6f}±{std_jfi:.6f}\t{mean_final_ma_acc:.6f}±{std_final_ma_acc:.6f}"
+        )
 
 if __name__ == "__main__":
     main()
