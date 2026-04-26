@@ -31,7 +31,7 @@ def args_parser():
     parser.add_argument('--use_checkpoint', action='store_true', help='whether to save best model (default: no checkpoint)')
     parser.add_argument('--uavfl', action='store_true', help='for UAVFL simulation')
     parser.add_argument('--group_ratio', type=float, default=0.95, help="labels ratio for region group")
-    parser.add_argument('--algorithm', type=str, default='random', help="algorithm selection (proposed, client_selection, random, pipeline)")
+    parser.add_argument('--algorithm', type=str, default='random', choices=['proposed', 'random', 'pipeline', 'utility'])
     parser.add_argument('--fedprox', action='store_true')
     parser.add_argument('--subchannels', type=int, default=3, help='number of subchannels')
     parser.add_argument('--n_clusters', type=int, default=3, help='number of clusters L for UAV waypoints')
