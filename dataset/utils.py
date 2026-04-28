@@ -1,4 +1,5 @@
 import numpy as np
+import os
 from torchvision import datasets, transforms
 from dataset.leaf import FEMNIST, ShakeSpeare
 from collections import Counter
@@ -24,17 +25,36 @@ def get_dataset(args):
         else:
             print("Warning: The ShakeSpeare dataset is naturally non-iid, you do not need to specify iid or non-iid")
     else:
+        def has_dataset_files(root, required_paths):
+            return all(os.path.exists(os.path.join(root, path)) for path in required_paths)
+
         if args.dataset == 'mnist':
+            root = './data/mnist/'
+            should_download = not has_dataset_files(root, [
+                'MNIST/raw/train-images-idx3-ubyte',
+                'MNIST/raw/train-labels-idx1-ubyte',
+                'MNIST/raw/t10k-images-idx3-ubyte',
+                'MNIST/raw/t10k-labels-idx1-ubyte'
+            ])
             trans_mnist = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
-            dataset_train = datasets.MNIST('./data/mnist/', train=True, download=True, transform=trans_mnist)
-            dataset_test = datasets.MNIST('./data/mnist/', train=False, download=True, transform=trans_mnist)
+            dataset_train = datasets.MNIST(root, train=True, download=should_download, transform=trans_mnist)
+            dataset_test = datasets.MNIST(root, train=False, download=should_download, transform=trans_mnist)
         elif args.dataset == 'fashion-mnist':
+            root = './data/fashion-mnist'
+            should_download = not has_dataset_files(root, [
+                'FashionMNIST/raw/train-images-idx3-ubyte',
+                'FashionMNIST/raw/train-labels-idx1-ubyte',
+                'FashionMNIST/raw/t10k-images-idx3-ubyte',
+                'FashionMNIST/raw/t10k-labels-idx1-ubyte'
+            ])
             trans_fashion_mnist = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
-            dataset_train = datasets.FashionMNIST('./data/fashion-mnist', train=True, download=True,
+            dataset_train = datasets.FashionMNIST(root, train=True, download=should_download,
                                                 transform=trans_fashion_mnist)
-            dataset_test  = datasets.FashionMNIST('./data/fashion-mnist', train=False, download=True,
+            dataset_test  = datasets.FashionMNIST(root, train=False, download=should_download,
                                                 transform=trans_fashion_mnist)
         elif args.dataset == 'cifar10':
+            root = './data/cifar10'
+            should_download = not has_dataset_files(root, ['cifar-10-batches-py/batches.meta'])
             trans_cifar10_train = transforms.Compose([
                 transforms.RandomCrop(32, padding=4),
                 transforms.RandomHorizontalFlip(),
@@ -45,9 +65,11 @@ def get_dataset(args):
                 transforms.ToTensor(),
                 transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
             ])
-            dataset_train = datasets.CIFAR10('./data/cifar10', train=True, download=True, transform=trans_cifar10_train)
-            dataset_test = datasets.CIFAR10('./data/cifar10', train=False, download=True, transform=trans_cifar10_test)
+            dataset_train = datasets.CIFAR10(root, train=True, download=should_download, transform=trans_cifar10_train)
+            dataset_test = datasets.CIFAR10(root, train=False, download=should_download, transform=trans_cifar10_test)
         elif args.dataset == 'cifar100':
+            root = './data/cifar100'
+            should_download = not has_dataset_files(root, ['cifar-100-python/meta'])
             trans_cifar100_train = transforms.Compose([
                 transforms.RandomCrop(32, padding=4),
                 transforms.RandomHorizontalFlip(),
@@ -58,8 +80,8 @@ def get_dataset(args):
                 transforms.ToTensor(),
                 transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
             ])
-            dataset_train = datasets.CIFAR100('./data/cifar100', train=True, download=True, transform=trans_cifar100_train)
-            dataset_test = datasets.CIFAR100('./data/cifar100', train=False, download=True, transform=trans_cifar100_test)
+            dataset_train = datasets.CIFAR100(root, train=True, download=should_download, transform=trans_cifar100_train)
+            dataset_test = datasets.CIFAR100(root, train=False, download=should_download, transform=trans_cifar100_test)
         else:
             exit('Error: unrecognized dataset')
         # sample users
